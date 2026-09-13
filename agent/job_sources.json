@@ -1,0 +1,60 @@
+{
+  "apify_actors": [
+    {
+      "id": "indeed",
+      "actor": "curious_coder/indeed-jobs-scraper",
+      "query": {
+        "search": "",
+        "location": "Bangalore",
+        "maxResults": 50
+      }
+    },
+    {
+      "id": "naukri",
+      "actor": "dropship/naukri-scraper",
+      "query": {
+        "search": "",
+        "location": "Bangalore"
+      }
+    }
+  ],
+  "rss_feeds": [
+    {
+      "id": "remote-ok",
+      "url": "https://remoteok.com/remote-network-jobs/feed.rss",
+      "type": "rss"
+    },
+    {
+      "id": "indeed-rss",
+      "url": "https://www.indeed.com/rss?q=network+engineer&l=Bangalore&sort=date",
+      "type": "rss"
+    },
+    {
+      "id": "linkedin-rss",
+      "url": "https://www.linkedin.com/jobs/search/?keywords=network%20engineer&location=Bangalore&rss=true",
+      "type": "rss"
+    }
+  ],
+  "company_careers": [
+    {
+      "id": "cisco-careers",
+      "url": "https://jobs.cisco.com/search-jobs?keyword=network%20engineer&location=Bangalore",
+      "type": "http"
+    },
+    {
+      "id": "google-careers",
+      "url": "https://careers.google.com/jobs/results/?q=network%20engineer&location=Bangalore",
+      "type": "http"
+    },
+    {
+      "id": "juniper-careers",
+      "url": "https://careers.juniper.net/jobs?search=network%20engineer&location=Bangalore",
+      "type": "http"
+    },
+    {
+      "id": "arista-careers",
+      "url": "https://www.arista.com/en/careers?search=network%20engineer&location=Bangalore",
+      "type": "http"
+    }
+  ]
+}

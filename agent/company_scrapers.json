@@ -1,0 +1,58 @@
+{
+  "scrapers": [
+    {
+      "company": "Cisco",
+      "careers_url": "https://jobs.cisco.com/search-jobs?keyword=network%20engineer&location=Bangalore",
+      "selector": ".job-title a",
+      "link_prefix": "https://jobs.cisco.com",
+      "type": "http-parse"
+    },
+    {
+      "company": "Google",
+      "careers_url": "https://careers.google.com/jobs/results/?q=network%20engineer&location=Bangalore",
+      "type": "rss",
+      "rss_fallback": "https://careers.google.com/jobs/results/?q=network%20engineer&location=Bangalore"
+    },
+    {
+      "company": "Juniper",
+      "careers_url": "https://careers.juniper.net/jobs?search=network%20engineer&location=Bangalore",
+      "type": "http-parse"
+    },
+    {
+      "company": "Arista",
+      "careers_url": "https://www.arista.com/en/careers?search=network%20engineer",
+      "type": "http-parse"
+    },
+    {
+      "company": "Amazon",
+      "careers_url": "https://www.amazon.jobs/en/jobs?search=network%20engineer&location=Bangalore",
+      "type": "rss",
+      "rss_fallback": "https://www.amazon.jobs/en/search.json?search=network%20engineer&location=Bangalore"
+    },
+    {
+      "company": "Microsoft",
+      "careers_url": "https://careers.microsoft.com/us/en/search-results?q=network%20engineer&location=Bangalore",
+      "type": "http-parse"
+    },
+    {
+      "company": "VMware/Broadcom",
+      "careers_url": "https://careers.broadcom.com/jobs?search=network%20engineer&location=Bangalore",
+      "type": "http-parse"
+    },
+    {
+      "company": "Nvidia",
+      "careers_url": "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/jobs?q=network%20engineer&location=Bangalore",
+      "type": "http-parse"
+    },
+    {
+      "company": "Dell",
+      "careers_url": "https://jobs.dell.com/search-jobs?keyword=network%20engineer&location=Bangalore",
+      "type": "http-parse"
+    },
+    {
+      "company": "HPE",
+      "careers_url": "https://careers.hpe.com/jobs?search=network%20engineer&location=Bangalore",
+      "type": "http-parse"
+    }
+  ]
+}

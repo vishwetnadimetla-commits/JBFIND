@@ -20,66 +20,39 @@
       }
     },
     {
-      "id": "sub-indeed",
-      "name": "Indeed Scraper",
+      "id": "scrape-primary",
+      "name": "JobSpy Scrape",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [450, 100],
+      "position": [450, 200],
       "parameters": {
-        "method": "POST",
-        "url": "=https://api.apify.com/v2/acts/curious_coder~indeed-jobs-scraper/runs?token={{$credentials.apifyApiToken}}",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {"name": "search", "value": "network engineer"},
-            {"name": "location", "value": "Bangalore"},
-            {"name": "maxResults", "value": 50}
-          ]
-        }
-      },
-      "credentials": {
-        "apifyApiToken": {"id": "apify", "name": "Apify"}
+        "method": "GET",
+        "url": "http://scraper:8001/scrape?q=network+engineer&location=Bangalore%2C+India&sites=indeed%2Clinkedin%2Cnaukri%2Cgoogle&count=100",
+        "options": {}
       }
     },
     {
-      "id": "sub-naukri",
-      "name": "Naukri Scraper",
+      "id": "scrape-remote-ok",
+      "name": "RemoteOK API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [450, 300],
+      "position": [450, 400],
       "parameters": {
-        "method": "POST",
-        "url": "=https://api.apify.com/v2/acts/dropship~naukri-scraper/runs?token={{$credentials.apifyApiToken}}",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {"name": "search", "value": "network engineer"},
-            {"name": "location", "value": "Bangalore"}
-          ]
-        }
-      },
-      "credentials": {
-        "apifyApiToken": {"id": "apify", "name": "Apify"}
+        "method": "GET",
+        "url": "https://remoteok.com/api?tag=network",
+        "options": {}
       }
     },
     {
-      "id": "sub-rss-feed-1",
-      "name": "RemoteOK RSS",
-      "type": "n8n-nodes-base.rssFeedRead",
-      "typeVersion": 1,
-      "position": [450, 500],
+      "id": "scrape-remotive",
+      "name": "Remotive API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 600],
       "parameters": {
-        "url": "https://remoteok.com/remote-network-jobs/feed.rss"
-      }
-    },
-    {
-      "id": "sub-rss-feed-2",
-      "name": "Indeed RSS",
-      "type": "n8n-nodes-base.rssFeedRead",
-      "typeVersion": 1,
-      "position": [450, 700],
-      "parameters": {
-        "url": "https://www.indeed.com/rss?q=network+engineer&l=Bangalore&sort=date"
+        "method": "GET",
+        "url": "https://remotive.com/api/remote-jobs?category=software-dev&limit=50",
+        "options": {}
       }
     },
     {
@@ -100,7 +73,7 @@
       "position": [900, 300],
       "parameters": {
         "language": "python",
-        "code": "import json\n\nitems = {{$json}}\nif isinstance(items, dict):\n    items = items.get('results', items.get('data', items.get('items', [items])))\nif not isinstance(items, list):\n    items = [items]\n\nseen_urls = set()\nseen_keys = set()\nnormalized = []\n\nfor job in items:\n    company = job.get('companyName') or job.get('company') or job.get('author') or ''\n    title = job.get('title') or job.get('jobTitle') or job.get('name') or ''\n    location = job.get('location') or job.get('locations') or job.get('city') or ''\n    url = job.get('url') or job.get('jobUrl') or job.get('link') or job.get('guid') or ''\n    jd = job.get('description') or job.get('body') or job.get('content') or job.get('text') or ''\n    source = job.get('source', 'scraped')\n    posted = job.get('postedDate') or job.get('date') or job.get('pubDate') or ''\n\n    # Dedup by URL\n    norm_url = url.strip().lower().rstrip('/')\n    if norm_url and norm_url in seen_urls:\n        continue\n    if norm_url:\n        seen_urls.add(norm_url)\n\n    # Dedup by company+title+location\n    key = f\"{company.lower().strip()}|{title.lower().strip()}|{location.lower().strip()}\"\n    if key in seen_keys:\n        continue\n    seen_keys.add(key)\n\n    normalized.append({\n        'company': company,\n        'title': title,\n        'location': location,\n        'experience': job.get('experienceRequired') or job.get('experience') or '',\n        'job_url': url,\n        'jd': jd,\n        'source': source or 'scraped',\n        'posted_date': posted,\n        'discovered_date': '{{$now.toISOString()}}'\n    })\n\nreturn normalized\n"
+        "code": "import json\n\nitems = {{$json}}\nif isinstance(items, dict):\n    items = items.get('jobs', items.get('results', items.get('data', [items])))\nif not isinstance(items, list):\n    items = [items] if items else []\n\nseen_urls = set()\nseen_keys = set()\nnormalized = []\n\n# Remotive wraps results in 'jobs' key\nif items and isinstance(items[0], dict) and 'jobs' in items[0]:\n    items = items[0]['jobs']\n\nfor job in items:\n    company = job.get('company_name') or job.get('company') or job.get('author') or ''\n    title = job.get('title') or job.get('job_title') or ''\n    location = job.get('city') or job.get('location') or ''\n    url = job.get('url') or job.get('job_url') or ''\n    jd = job.get('description') or job.get('body') or ''\n    source = job.get('source', job.get('site', 'scraped'))\n    posted = job.get('date_posted') or job.get('pubDate') or job.get('date') or ''\n\n    norm_url = url.strip().lower().rstrip('/')\n    if norm_url and norm_url in seen_urls:\n        continue\n    if norm_url:\n        seen_urls.add(norm_url)\n\n    key = f\"{company.lower().strip()}|{title.lower().strip()}|{location.lower().strip()}\"\n    if key in seen_keys:\n        continue\n    seen_keys.add(key)\n\n    normalized.append({\n        'company': company,\n        'title': title,\n        'location': location,\n        'experience': '',\n        'job_url': url,\n        'jd': jd,\n        'source': source,\n        'posted_date': posted,\n        'discovered_date': '{{$now.toISOString()}}'\n    })\n\nreturn normalized\n"
       }
     },
     {
@@ -119,7 +92,7 @@
           "parameters": [
             {"name": "model", "value": "deepseek-v4-flash"},
             {"name": "messages[0][role]", "value": "system"},
-            {"name": "messages[0][content]", "value": "=You are a job analyst for a network engineer with 4 years experience. Analyze the job listing. Return valid JSON only with: experience_status (PASS/REJECT/REVIEW/MISSING_DATA), experience_reason, role_match (0-100), skill_match (0-100), location_match (0-100), tweak_level (0-100), overall_score (0-100), matched_skills, missing_skills, recommended (bool), why_this_job. Rules: 4 years candidate. PASS if range accepts 4, REJECT if clearly exceeds 4. Never fabricate skills."},
+            {"name": "messages[0][content]", "value": "=You are a job analyst for a network engineer with 4 years experience. Analyze the job listing below. Return valid JSON only with: experience_status (PASS/REJECT/REVIEW/MISSING_DATA), experience_reason, role_match (0-100), skill_match (0-100), location_match (0-100), tweak_level (0-100), overall_score (0-100), matched_skills (array), missing_skills (array), recommended (bool), why_this_job. Rules: 4 years candidate. PASS if range accepts 4, REJECT if clearly exceeds 4. Never fabricate skills."},
             {"name": "messages[1][role]", "value": "user"},
             {"name": "messages[1][content]", "value": "={{$json | toJSON()}}"},
             {"name": "max_tokens", "value": 500},
@@ -139,7 +112,7 @@
       "position": [1300, 300],
       "parameters": {
         "language": "python",
-        "code": "import json\n\nitems = {{$json}}\nresults = []\nweights = {\n    'role_weight': 0.25,\n    'skill_weight': 0.4,\n    'location_weight': 0.15,\n    'tweak_weight': 0.2\n}\n\nfor item in items:\n    analysis_text = item.get('choices', [{}])[0].get('message', {}).get('content', '{}')\n    try:\n        analysis = json.loads(analysis_text)\n    except:\n        analysis = {}\n\n    if analysis.get('experience_status') == 'REJECT':\n        analysis['overall_score'] = -1\n        analysis['recommended'] = False\n\n    results.append({\n        'company': item.get('company', ''),\n        'title': item.get('title', ''),\n        'location': item.get('location', ''),\n        'job_url': item.get('job_url', ''),\n        'experience': item.get('experience', ''),\n        'experience_status': analysis.get('experience_status', 'MISSING_DATA'),\n        'experience_reason': analysis.get('experience_reason', ''),\n        'role_match': analysis.get('role_match', 0),\n        'skill_match': analysis.get('skill_match', 0),\n        'location_match': analysis.get('location_match', 50),\n        'tweak_level': analysis.get('tweak_level', 50),\n        'overall_score': analysis.get('overall_score', 0),\n        'recommended': analysis.get('recommended', False),\n        'why_this_job': analysis.get('why_this_job', ''),\n        'matched_skills': analysis.get('matched_skills', []),\n        'missing_skills': analysis.get('missing_skills', []),\n        'review_required': analysis.get('review_required', False)\n    })\n\n# Sort: PASS first, then by overall_score desc, then by tweak_level asc\npassing = [r for r in results if r.get('experience_status') == 'PASS']\nothers = [r for r in results if r.get('experience_status') != 'PASS']\npassing.sort(key=lambda r: (-r.get('overall_score', 0), r.get('tweak_level', 0), -r.get('skill_match', 0)))\n\nsorted_results = passing + others\nreturn sorted_results[:100]\n"
+        "code": "import json\n\nitems = {{$json}}\nresults = []\n\nfor item in items:\n    analysis_text = item.get('choices', [{}])[0].get('message', {}).get('content', '{}')\n    try:\n        analysis = json.loads(analysis_text)\n    except:\n        analysis = {}\n\n    if analysis.get('experience_status') == 'REJECT':\n        analysis['overall_score'] = -1\n        analysis['recommended'] = False\n\n    results.append({\n        'company': item.get('company', ''),\n        'title': item.get('title', ''),\n        'location': item.get('location', ''),\n        'job_url': item.get('job_url', ''),\n        'experience': '',\n        'experience_status': analysis.get('experience_status', 'MISSING_DATA'),\n        'experience_reason': analysis.get('experience_reason', ''),\n        'role_match': analysis.get('role_match', 0),\n        'skill_match': analysis.get('skill_match', 0),\n        'location_match': analysis.get('location_match', 50),\n        'tweak_level': analysis.get('tweak_level', 50),\n        'overall_score': analysis.get('overall_score', 0),\n        'recommended': analysis.get('recommended', False),\n        'why_this_job': analysis.get('why_this_job', ''),\n        'matched_skills': analysis.get('matched_skills', []),\n        'missing_skills': analysis.get('missing_skills', []),\n        'review_required': analysis.get('review_required', False)\n    })\n\npassing = [r for r in results if r.get('experience_status') == 'PASS']\nothers = [r for r in results if r.get('experience_status') != 'PASS']\npassing.sort(key=lambda r: (-r.get('overall_score', 0), r.get('tweak_level', 0), -r.get('skill_match', 0)))\n\nsorted_results = passing + others\nreturn sorted_results[:100]\n"
       }
     },
     {
@@ -154,7 +127,7 @@
         "sheetName": "JOBS",
         "columns": {
           "mappingMode": "defineBelow",
-          "value": "Job_ID,Company,Job_Title,Location,Experience_Required,Experience_Status,Role_Match,Skill_Match,Tweak_Level,Location_Match,Overall_Score,Job_Source,Job_URL,Posted_Date,Discovered_Date,Full_JD,Recommended,Why_This_Job,Review_Required,Last_Updated"
+          "value": "Job_ID,Company,Job_Title,Location,Experience_Status,Role_Match,Skill_Match,Tweak_Level,Location_Match,Overall_Score,Job_Source,Job_URL,Posted_Date,Discovered_Date,Full_JD,Recommended,Why_This_Job,Review_Required,Last_Updated"
         },
         "options": {}
       },
@@ -170,7 +143,7 @@
       "position": [1700, 300],
       "parameters": {
         "chatId": "{{$parameter.chatId}}",
-        "text": "=📋 *Daily Job Report*\nDate: {{$now.format('DD MMM YYYY')}}\n\n*Top Jobs for You:*\n{{#each $json}}\n{{#if recommended}}\n🔹 *{{company}}* — {{title}}\n   Location: {{location}} | Score: {{overall_score}}\n   Match: Skills {{skill_match}}% | Why: {{why_this_job}}\n   [Apply]({{job_url}})\n{{/if}}\n{{/each}}\n\n✅ *{{$json.filter(j => j.recommended).length}}* recommended jobs today."
+        "text": "=*JBFind Daily Report*\n{{$now.format('DD MMM YYYY')}}\n\n*Recommended for You:*\n{{#each $json}}\n{{#if recommended}}\n{{@index}}. *{{company}}* — {{title}}\n   📍 {{location}} | Score: {{overall_score}}\n   Skills: {{skill_match}}% | Why: {{why_this_job}}\n   [Apply]({{job_url}})\n\n{{/if}}\n{{/each}}\n✅ *Total:* {{$json.filter(j => j.recommended).length}} recommended"
       },
       "credentials": {
         "telegramApi": {"id": "jbfind-reporter", "name": "JBFind Reporter Bot"}
@@ -185,11 +158,10 @@
     }
   ],
   "connections": {
-    "Daily 6am Trigger": {"main": [[{"node": "Indeed Scraper", "type": "main", "index": 0}, {"node": "Naukri Scraper", "type": "main", "index": 0}, {"node": "RemoteOK RSS", "type": "main", "index": 0}, {"node": "Indeed RSS", "type": "main", "index": 0}]]},
-    "Indeed Scraper": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]},
-    "Naukri Scraper": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 1}]]},
-    "RemoteOK RSS": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 2}]]},
-    "Indeed RSS": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 3}]]},
+    "Daily 6am Trigger": {"main": [[{"node": "JobSpy Scrape", "type": "main", "index": 0}, {"node": "RemoteOK API", "type": "main", "index": 0}, {"node": "Remotive API", "type": "main", "index": 0}]]},
+    "JobSpy Scrape": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]},
+    "RemoteOK API": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 1}]]},
+    "Remotive API": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 2}]]},
     "Merge All Sources": {"main": [[{"node": "Normalize + Dedupe", "type": "main", "index": 0}]]},
     "Normalize + Dedupe": {"main": [[{"node": "LLM Analyze Batch", "type": "main", "index": 0}]]},
     "LLM Analyze Batch": {"main": [[{"node": "Parse Scores + Rank", "type": "main", "index": 0}]]},

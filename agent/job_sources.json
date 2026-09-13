@@ -1,60 +1,34 @@
 {
-  "apify_actors": [
-    {
-      "id": "indeed",
-      "actor": "curious_coder/indeed-jobs-scraper",
-      "query": {
-        "search": "",
-        "location": "Bangalore",
-        "maxResults": 50
-      }
-    },
-    {
-      "id": "naukri",
-      "actor": "dropship/naukri-scraper",
-      "query": {
-        "search": "",
-        "location": "Bangalore"
-      }
+  "primary": {
+    "engine": "jobspy",
+    "endpoint": "http://scraper:8001/scrape",
+    "sites": ["indeed", "linkedin", "naukri", "google"],
+    "params": {
+      "q": "network engineer",
+      "location": "Bangalore, India",
+      "count": 100
     }
-  ],
-  "rss_feeds": [
+  },
+  "remote_apis": [
     {
       "id": "remote-ok",
-      "url": "https://remoteok.com/remote-network-jobs/feed.rss",
-      "type": "rss"
+      "url": "https://remoteok.com/api?tag=network",
+      "type": "json"
     },
     {
-      "id": "indeed-rss",
-      "url": "https://www.indeed.com/rss?q=network+engineer&l=Bangalore&sort=date",
-      "type": "rss"
+      "id": "remotive",
+      "url": "https://remotive.com/api/remote-jobs?category=software-dev&limit=100",
+      "type": "json"
     },
     {
-      "id": "linkedin-rss",
-      "url": "https://www.linkedin.com/jobs/search/?keywords=network%20engineer&location=Bangalore&rss=true",
-      "type": "rss"
+      "id": "jobicy",
+      "url": "https://jobicy.com/api/v2/remote-jobs?count=20&tag=network",
+      "type": "json"
     }
   ],
-  "company_careers": [
-    {
-      "id": "cisco-careers",
-      "url": "https://jobs.cisco.com/search-jobs?keyword=network%20engineer&location=Bangalore",
-      "type": "http"
-    },
-    {
-      "id": "google-careers",
-      "url": "https://careers.google.com/jobs/results/?q=network%20engineer&location=Bangalore",
-      "type": "http"
-    },
-    {
-      "id": "juniper-careers",
-      "url": "https://careers.juniper.net/jobs?search=network%20engineer&location=Bangalore",
-      "type": "http"
-    },
-    {
-      "id": "arista-careers",
-      "url": "https://www.arista.com/en/careers?search=network%20engineer&location=Bangalore",
-      "type": "http"
-    }
-  ]
+  "company_careers": {
+    "engine": "playwright",
+    "enabled": false,
+    "note": "Enable after scraped: scrape each company's careers page with Playwright"
+  }
 }

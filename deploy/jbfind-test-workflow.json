@@ -9,25 +9,15 @@
       "position": [250, 300]
     },
     {
-      "id": "http-apify",
-      "name": "Apify Scrape",
+      "id": "scrape-test",
+      "name": "JobSpy Test Scrape",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [450, 300],
       "parameters": {
-        "method": "POST",
-        "url": "https://api.apify.com/v2/acts/{{$parameter.actorId}}/runs?token={{$credentials.apifyApiToken}}",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            { "name": "search", "value": "network engineer" },
-            { "name": "location", "value": "Bangalore" }
-          ]
-        },
+        "method": "GET",
+        "url": "http://scraper:8001/scrape?q=network+engineer&location=Bangalore%2C+India&sites=indeed%2Cgoogle&count=10",
         "options": {}
-      },
-      "credentials": {
-        "apifyApiToken": { "id": "apify", "name": "Apify Token" }
       }
     },
     {
@@ -38,7 +28,7 @@
       "position": [650, 300],
       "parameters": {
         "language": "python",
-        "code": "import json\n\n# Normalize Apify output into a consistent format\nitems = {{$json}}\nif isinstance(items, dict):\n    items = items.get('results', items.get('data', [items]))\nif not isinstance(items, list):\n    items = [items]\n\nnormalized = []\nfor job in items:\n    normalized.append({\n        'company': job.get('companyName') or job.get('company') or '',\n        'title': job.get('title') or job.get('jobTitle') or job.get('name') or '',\n        'location': job.get('location') or job.get('locations') or '',\n        'experience': job.get('experienceRequired') or job.get('experience') or '',\n        'job_url': job.get('url') or job.get('jobUrl') or job.get('link') or '',\n        'jd': job.get('description') or job.get('body') or job.get('text') or '',\n        'source': 'apify',\n        'posted_date': job.get('postedDate') or job.get('date') or ''\n    })\n\nreturn normalized\n"
+        "code": "import json\n\nitems = {{$json}}\nif isinstance(items, dict):\n    items = items.get('results', items.get('data', [items]))\nif not isinstance(items, list):\n    items = [items] if items else []\n\nnormalized = []\nfor job in items:\n    normalized.append({\n        'company': job.get('company_name') or job.get('company') or job.get('author') or '',\n        'title': job.get('title') or job.get('job_title') or '',\n        'location': job.get('city') or job.get('location') or '',\n        'experience': '',\n        'job_url': job.get('url') or job.get('job_url') or '',\n        'jd': job.get('description') or '',\n        'source': job.get('source', 'jobspy'),\n        'posted_date': str(job.get('date_posted', ''))\n    })\n\nreturn normalized\n"
       }
     },
     {
@@ -57,14 +47,13 @@
           "parameters": [
             { "name": "model", "value": "deepseek-v4-flash" },
             { "name": "messages[0][role]", "value": "system" },
-            { "name": "messages[0][content]", "value": "=You are a job analyst. Analyze the job listing and return JSON with experience_status, role_match, skill_match, location_match, tweak_level, overall_score. Candidate has 4 years network engineering experience. Return valid JSON only." },
+            { "name": "messages[0][content]", "value": "=You are a job analyst. Analyze the job listing and return JSON with experience_status (PASS/REJECT/REVIEW/MISSING_DATA), experience_reason, role_match, skill_match, location_match, tweak_level, overall_score. Candidate has 4 years network engineering experience. Return valid JSON only." },
             { "name": "messages[1][role]", "value": "user" },
             { "name": "messages[1][content]", "value": "={{$json}}" },
             { "name": "max_tokens", "value": 500 },
             { "name": "temperature", "value": 0.1 }
           ]
-        },
-        "options": {}
+        }
       },
       "credentials": {
         "httpHeaderAuth": { "id": "experiential-labs", "name": "Experiential Labs API Key" }
@@ -90,8 +79,8 @@
     }
   ],
   "connections": {
-    "Manual Trigger": { "main": [[ { "node": "Apify Scrape", "type": "main", "index": 0 } ]] },
-    "Apify Scrape": { "main": [[ { "node": "Normalize Jobs", "type": "main", "index": 0 } ]] },
+    "Manual Trigger": { "main": [[ { "node": "JobSpy Test Scrape", "type": "main", "index": 0 } ]] },
+    "JobSpy Test Scrape": { "main": [[ { "node": "Normalize Jobs", "type": "main", "index": 0 } ]] },
     "Normalize Jobs": { "main": [[ { "node": "LLM Analyze", "type": "main", "index": 0 } ]] },
     "LLM Analyze": { "main": [[ { "node": "Calculate Score", "type": "main", "index": 0 } ]] },
     "Calculate Score": { "main": [[ { "node": "Output", "type": "main", "index": 0 } ]] }
@@ -99,6 +88,6 @@
   "pinData": {},
   "versionId": "1",
   "triggerCount": 0,
-  "tags": [],
+  "tags": ["jbfind", "test"],
   "active": false
 }

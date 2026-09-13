@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JBFind Dashboard</title>
+<style>
+  :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #c9d1d9; --green: #3fb950; --red: #f85149; --yellow: #d29922; --blue: #58a6ff; --dim: #8b949e; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); padding: 24px; max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+  .subtitle { color: var(--dim); font-size: 14px; margin-bottom: 24px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .card .label { font-size: 12px; text-transform: uppercase; color: var(--dim); letter-spacing: .5px; margin-bottom: 4px; }
+  .card .value { font-size: 28px; font-weight: 700; }
+  .card .value.green { color: var(--green); }
+  .card .value.red { color: var(--red); }
+  .card .value.yellow { color: var(--yellow); }
+  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .status-dot.green { background: var(--green); }
+  .status-dot.red { background: var(--red); }
+  .status-dot.yellow { background: var(--yellow); }
+  .status-dot.gray { background: var(--dim); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--dim); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+  td { color: var(--text); }
+  tr:hover td { background: rgba(255,255,255,.03); }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+  .tag.green { background: rgba(63,185,80,.15); color: var(--green); }
+  .tag.red { background: rgba(248,81,73,.15); color: var(--red); }
+  .tag.yellow { background: rgba(210,153,34,.15); color: var(--yellow); }
+  .tag.blue { background: rgba(88,166,255,.15); color: var(--blue); }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .section-title { font-size: 16px; font-weight: 600; margin: 24px 0 12px; }
+  .section-title .count { color: var(--dim); font-weight: 400; font-size: 13px; }
+  .services { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .service { display: flex; align-items: center; gap: 10px; }
+  .service .s-name { font-size: 14px; }
+  .service .s-status { font-size: 12px; }
+  .help { color: var(--dim); font-size: 13px; line-height: 1.6; margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
+  .help code { background: rgba(255,255,255,.06); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<h1>JBFind</h1>
+<p class="subtitle">Job Hunting Automation · Last updated: <span id="last-updated">—</span></p>
+
+<!-- Stats cards -->
+<div class="grid">
+  <div class="card">
+    <div class="label">Jobs Today</div>
+    <div class="value" id="jobs-today">—</div>
+  </div>
+  <div class="card">
+    <div class="label">Recommended</div>
+    <div class="value green" id="recommended">—</div>
+  </div>
+  <div class="card">
+    <div class="label">Rejected</div>
+    <div class="value red" id="rejected">—</div>
+  </div>
+  <div class="card">
+    <div class="label">Top 50 Score</div>
+    <div class="value" id="top-score">—</div>
+  </div>
+  <div class="card">
+    <div class="label">Last Run</div>
+    <div class="value" id="last-run"><span class="status-dot gray"></span>—</div>
+  </div>
+  <div class="card">
+    <div class="label">Daily Report</div>
+    <div class="value" id="daily-report"><span class="status-dot gray"></span>—</div>
+  </div>
+</div>
+
+<!-- Services -->
+<div class="section-title">Services</div>
+<div class="services" id="services"></div>
+
+<!-- Sources -->
+<div class="section-title">Sources <span class="count" id="source-count"></span></div>
+<table id="sources-table"><thead><tr><th>Source</th><th>Status</th><th>Jobs Found</th><th>Last Scraped</th></tr></thead><tbody></tbody></table>
+
+<!-- Top Jobs -->
+<div class="section-title">Top Recommended <span class="count" id="job-count"></span></div>
+<table id="jobs-table"><thead><tr><th>Company</th><th>Title</th><th>Location</th><th>Score</th><th>Skills</th><th>Why</th><th>Link</th></tr></thead><tbody></tbody></table>
+
+<!-- Help -->
+<div class="help">
+  <strong>Autoresearch loop:</strong> <code>./run.sh</code> &nbsp;|&nbsp; <code>python3 evaluate.py</code> &nbsp;|&nbsp; <code>git commit -m "experiment"</code><br>
+  <strong>n8n:</strong> <a href="#" id="n8n-link" target="_blank">localhost:5678</a> &nbsp;|&nbsp;
+  <strong>Sheet:</strong> <a href="https://docs.google.com/spreadsheets/d/1voOTzO8auKbgrP4J4dPACnwf9Tg2MsgUSCU9w2-mPFY" target="_blank">JOB_AUTOMATION_DATABASE</a> &nbsp;|&nbsp;
+  <strong>Dashboard:</strong> <code>python3 deploy/dashboard_server.py</code> &nbsp;|&nbsp;
+  <strong>Telegram:</strong> @JBFindReporterBot &nbsp;|&nbsp; @JBFindTrackerBot
+</div>
+
+<script>
+async function fetchJobs() {
+  try {
+    const r = await fetch('/api/jobs');
+    if (!r.ok) return [];
+    const d = await r.json();
+    return d.rows || [];
+  } catch { return []; }
+}
+
+function ago(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  const sec = Math.floor((Date.now() - d) / 1000);
+  if (sec < 60) return 'just now';
+  if (sec < 3600) return Math.floor(sec/60) + 'm ago';
+  if (sec < 86400) return Math.floor(sec/3600) + 'h ago';
+  return Math.floor(sec/86400) + 'd ago';
+}
+
+function statusDot(status) {
+  const cls = status === 'PASS' ? 'green' : status === 'REJECT' ? 'red' : status === 'RUNNING' ? 'yellow' : 'gray';
+  const label = status || 'Unknown';
+  return `<span class="status-dot ${cls}"></span>${label}`;
+}
+
+function scoreColor(s) {
+  if (s === '—' || s === '') return '';
+  const n = parseInt(s);
+  if (isNaN(n)) return '';
+  return n >= 80 ? 'green' : n >= 50 ? 'yellow' : 'red';
+}
+
+async function load() {
+  // Fetch JOBS sheet
+  const rows = await fetchJobs();
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  document.getElementById('last-updated').textContent = now;
+  document.getElementById('last-updated').dataset.raw = now;
+
+  const count = rows.length;
+  const recommended = rows.filter(r => (r[16] || '').toLowerCase() === 'true' || r[16] === 'TRUE');
+  const rejected = rows.filter(r => (r[4] || '') === 'REJECT');
+  const scores = recommended.map(r => parseFloat(r[10])).filter(s => !isNaN(s));
+
+  document.getElementById('jobs-today').textContent = count;
+  document.getElementById('recommended').textContent = recommended.length;
+  document.getElementById('rejected').textContent = rejected.length;
+  document.getElementById('top-score').textContent = scores.length ? Math.max(...scores) : '—';
+  document.getElementById('top-score').className = 'value ' + scoreColor(Math.max(...scores));
+
+  // Services
+  const svc = [
+    { name: 'n8n', status: 'Checking...', link: 'http://localhost:5678' },
+    { name: 'Scraper (JobSpy)', status: 'Checking...', link: 'http://scraper:8001/health' },
+    { name: 'Postgres', status: 'Checking...', link: '' },
+    { name: 'Ox Alpha Bridge', status: 'Checking...', link: 'http://localhost:3900/v1/models' },
+  ];
+  document.getElementById('services').innerHTML = svc.map(s => `
+    <div class="card service">
+      <div><span class="status-dot gray"></span></div>
+      <div>
+        <div class="s-name">${s.name}</div>
+        <div class="s-status" data-check="${s.link}">${s.status}</div>
+      </div>
+    </div>
+  `).join('');
+
+  // Check service health
+  document.querySelectorAll('[data-check]').forEach(el => {
+    const url = el.getAttribute('data-check');
+    if (!url) { el.textContent = 'ok'; el.parentElement.querySelector('.status-dot').className = 'status-dot green'; return; }
+    fetch(url, { mode: 'no-cors' }).then(() => {
+      el.textContent = 'Running';
+      el.parentElement.querySelector('.status-dot').className = 'status-dot green';
+    }).catch(() => {
+      el.textContent = 'Offline';
+      el.parentElement.querySelector('.status-dot').className = 'status-dot red';
+    });
+  });
+
+  // Sources
+  const sources = {};
+  rows.forEach(r => { const s = r[11] || 'unknown'; sources[s] = (sources[s]||0) + 1; });
+  const srcEl = document.getElementById('sources-table').querySelector('tbody');
+  const srcKeys = Object.keys(sources);
+  document.getElementById('source-count').textContent = `(${srcKeys.length})`;
+  srcEl.innerHTML = srcKeys.map(s => `
+    <tr><td>${s}</td><td>${statusDot('PASS')}</td><td>${sources[s]}</td><td>${ago(now)}</td></tr>
+  `).join('');
+
+  // Top jobs
+  const top = rows
+    .filter(r => r[4] === 'PASS' || r[4] === 'PASS')
+    .sort((a, b) => parseFloat(b[10]||0) - parseFloat(a[10]||0))
+    .slice(0, 20);
+  document.getElementById('job-count').textContent = `(${top.length})`;
+  const jobEl = document.getElementById('jobs-table').querySelector('tbody');
+  jobEl.innerHTML = top.map(r => {
+    const score = r[10] || '—';
+    return `<tr>
+      <td>${r[1] || '?'}</td>
+      <td>${r[2] || '?'}</td>
+      <td>${r[3] || '?'}</td>
+      <td class="value ${scoreColor(score)}">${score}</td>
+      <td>${r[9] || '—'}</td>
+      <td>${(r[17] || '').slice(0, 60)}</td>
+      <td>${r[12] ? `<a href="${r[12]}" target="_blank">Apply</a>` : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('n8n-link').href = window.location.hostname === 'localhost' || !window.location.hostname
+    ? 'http://localhost:5678'
+    : `http://${window.location.hostname}:5678`;
+}
+
+document.addEventListener('DOMContentLoaded', load);
+setInterval(load, 30000);
+</script>
+</body>
+</html>

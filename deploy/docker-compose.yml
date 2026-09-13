@@ -51,6 +51,20 @@ services:
     networks:
       - jbfind
 
+  dashboard:
+    build:
+      context: ..
+      dockerfile: deploy/dashboard.Dockerfile
+    container_name: jbfind-dashboard
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ~/.jbfind/secrets:/secrets:ro
+      - ./dashboard.html:/dash/dashboard.html:ro
+    networks:
+      - jbfind
+
   healthcheck:
     image: curlimages/curl:latest
     container_name: n8n-healthcheck

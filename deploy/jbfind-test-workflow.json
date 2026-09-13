@@ -1,0 +1,104 @@
+{
+  "name": "jb-find-test",
+  "nodes": [
+    {
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "id": "http-apify",
+      "name": "Apify Scrape",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/{{$parameter.actorId}}/runs?token={{$credentials.apifyApiToken}}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "search", "value": "network engineer" },
+            { "name": "location", "value": "Bangalore" }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "apifyApiToken": { "id": "apify", "name": "Apify Token" }
+      }
+    },
+    {
+      "id": "code-normalize",
+      "name": "Normalize Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300],
+      "parameters": {
+        "language": "python",
+        "code": "import json\n\n# Normalize Apify output into a consistent format\nitems = {{$json}}\nif isinstance(items, dict):\n    items = items.get('results', items.get('data', [items]))\nif not isinstance(items, list):\n    items = [items]\n\nnormalized = []\nfor job in items:\n    normalized.append({\n        'company': job.get('companyName') or job.get('company') or '',\n        'title': job.get('title') or job.get('jobTitle') or job.get('name') or '',\n        'location': job.get('location') or job.get('locations') or '',\n        'experience': job.get('experienceRequired') or job.get('experience') or '',\n        'job_url': job.get('url') or job.get('jobUrl') or job.get('link') or '',\n        'jd': job.get('description') or job.get('body') or job.get('text') or '',\n        'source': 'apify',\n        'posted_date': job.get('postedDate') or job.get('date') or ''\n    })\n\nreturn normalized\n"
+      }
+    },
+    {
+      "id": "llm-analyze",
+      "name": "LLM Analyze",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [850, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.experientiallabs.ai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "deepseek-v4-flash" },
+            { "name": "messages[0][role]", "value": "system" },
+            { "name": "messages[0][content]", "value": "=You are a job analyst. Analyze the job listing and return JSON with experience_status, role_match, skill_match, location_match, tweak_level, overall_score. Candidate has 4 years network engineering experience. Return valid JSON only." },
+            { "name": "messages[1][role]", "value": "user" },
+            { "name": "messages[1][content]", "value": "={{$json}}" },
+            { "name": "max_tokens", "value": 500 },
+            { "name": "temperature", "value": 0.1 }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "experiential-labs", "name": "Experiential Labs API Key" }
+      }
+    },
+    {
+      "id": "code-score",
+      "name": "Calculate Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300],
+      "parameters": {
+        "language": "python",
+        "code": "import json\n\nanalysis = {{$json}}\nchoices = analysis.get('choices', [])\nif not choices:\n    return {'error': 'No analysis result', 'overall_score': 0, 'recommended': False}\n\ntry:\n    result = json.loads(choices[0].get('message', {}).get('content', '{}'))\nexcept Exception:\n    return {'error': 'Failed to parse LLM output', 'overall_score': 0, 'recommended': False}\n\nif result.get('experience_status') == 'REJECT':\n    result['overall_score'] = -1\n    result['recommended'] = False\n\nreturn result\n"
+      }
+    },
+    {
+      "id": "output",
+      "name": "Output",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": { "main": [[ { "node": "Apify Scrape", "type": "main", "index": 0 } ]] },
+    "Apify Scrape": { "main": [[ { "node": "Normalize Jobs", "type": "main", "index": 0 } ]] },
+    "Normalize Jobs": { "main": [[ { "node": "LLM Analyze", "type": "main", "index": 0 } ]] },
+    "LLM Analyze": { "main": [[ { "node": "Calculate Score", "type": "main", "index": 0 } ]] },
+    "Calculate Score": { "main": [[ { "node": "Output", "type": "main", "index": 0 } ]] }
+  },
+  "pinData": {},
+  "versionId": "1",
+  "triggerCount": 0,
+  "tags": [],
+  "active": false
+}

@@ -1,0 +1,108 @@
+- generic [ref=f1e2]:
+  - banner [ref=f1e3]:
+    - list [ref=f1e5]:
+      - listitem [ref=f1e6]:
+        - link "Skip to content" [ref=f1e7] [cursor=pointer]:
+          - /url: "#maincontent"
+      - listitem [ref=f1e8]:
+        - link "Accessibility Policy" [ref=f1e9] [cursor=pointer]:
+          - /url: https://www.oracle.com/corporate/accessibility/
+    - generic [ref=f1e10]:
+      - generic [ref=f1e11]:
+        - navigation "Main Menu" [ref=f1e12]:
+          - button "Menu" [ref=f1e13] [cursor=pointer]
+        - link "Oracle Home" [ref=f1e16] [cursor=pointer]:
+          - /url: https://www.oracle.com/
+      - search [ref=f1e20]:
+        - combobox "Search Oracle.com" [ref=f1e22]
+      - generic [ref=f1e24]:
+        - button "Select country" [ref=f1e26] [cursor=pointer]:
+          - img "United States selected" [ref=f1e27]
+        - button "Sign in" [ref=f1e29] [cursor=pointer]
+        - link "Contact us" [ref=f1e32] [cursor=pointer]:
+          - /url: /corporate/contact/
+  - main [ref=f1e36]:
+    - generic [ref=f1e40]:
+      - generic [ref=f1e43]:
+        - generic [ref=f1e44]: 
+        - generic [ref=f1e45]: Cloud
+        - generic [ref=f1e46]:
+          - generic [ref=f1e47]:
+            - text: Cloud Account Name
+            - generic [ref=f1e48]: 
+          - textbox [ref=f1e49]
+          - text:   
+          - generic:
+            - generic:
+              - link "Next":
+                - /url: javascript:void(0);
+        - paragraph [ref=f1e50]:
+          - text: Forgot your cloud account name?
+          - link "Open a live chat" [ref=f1e51] [cursor=pointer]:
+            - /url: https://www.oracle.com/corporate/contact/
+        - separator [ref=f1e52]
+        - strong [ref=f1e53]: Not an Oracle Cloud customer yet?
+        - generic [ref=f1e54]:
+          - generic [ref=f1e55]: Sign Up
+          - text: 
+      - generic [ref=f1e59]:
+        - generic [ref=f1e61]:
+          - 'heading "OCI Functions: Build, Scale, and Innovate with Serverless" [level=4] [ref=f1e62]'
+          - paragraph [ref=f1e63]: Connect with Oracle experts to learn how OCI Functions can help you build and scale event-driven applications, automate workflows, and simplify operations. Explore practical use cases and best practices for accelerating cloud native development.
+          - link "Register today for OCI Functions webinar" [ref=f1e66] [cursor=pointer]:
+            - /url: https://go.oracle.com/LP=154371?elqCampaignId=674944&src1=:ow:o:s:po:::Cloud_SignIn&intcmp=WWMK260728P00039:ow:o:s:po:::Cloud_SignIn
+            - text: Register today
+            - generic [ref=f1e67]: for OCI Functions webinar
+        - generic [ref=f1e68]:
+          - heading "Run Oracle AI Database in the cloud of your choice" [level=4] [ref=f1e69]
+          - paragraph [ref=f1e70]: Connect with experts from Oracle and our hyperscaler partners at info sessions where you can learn more and get your questions answered about starting your Oracle database migration to AWS, Google Cloud, Microsoft Azure, and Oracle Cloud Infrastructure.
+          - link "Register today for Oracle AI Database migration webinar" [ref=f1e73] [cursor=pointer]:
+            - /url: https://go.oracle.com/LP=154018?elqCampaignId=674202&src1=:ow:o:s:po:::Cloud_SignIn&intcmp=WWMK260722P00025:ow:o:s:po:::Cloud_SignIn
+            - text: Register today
+            - generic [ref=f1e74]: for Oracle AI Database migration webinar
+  - contentinfo [ref=f1e75]:
+    - generic [ref=f1e77]:
+      - list [ref=f1e78]:
+        - listitem [ref=f1e79]:
+          - link "© 2026 Oracle" [ref=f1e80] [cursor=pointer]:
+            - /url: /legal/copyright.html
+        - listitem [ref=f1e81]:
+          - link "Privacy" [ref=f1e82] [cursor=pointer]:
+            - /url: /legal/privacy/
+          - text: /
+          - link "Do Not Sell My Info" [ref=f1e83] [cursor=pointer]:
+            - /url: /legal/privacy/privacy-choices.html
+        - listitem [ref=f1e84]:
+          - complementary "Open Cookie Preferences Modal" [ref=f1e85]:
+            - link "Cookie Preferences, opens a dedicated popup modal window" [ref=f1e86] [cursor=pointer]: Cookie Preferences
+        - listitem [ref=f1e87]:
+          - link "Ad Choices" [ref=f1e88] [cursor=pointer]:
+            - /url: /legal/privacy/privacy-policy/#adchoices
+        - listitem [ref=f1e89]:
+          - link "Careers" [ref=f1e90] [cursor=pointer]:
+            - /url: /corporate/careers/
+        - listitem [ref=f1e91]:
+          - link "Subscribe to emails" [ref=f1e92] [cursor=pointer]:
+            - /url: https://go.oracle.com/subscribe/?l_code=en&src1=OW:O:FO
+        - listitem [ref=f1e93]:
+          - link "Integrity Helpline" [ref=f1e94] [cursor=pointer]:
+            - /url: https://secure.ethicspoint.com/domain/media/en/gui/31053/index.html
+        - listitem [ref=f1e95]:
+          - link "Contact Us" [ref=f1e96] [cursor=pointer]:
+            - /url: /corporate/contact/
+      - list [ref=f1e97]:
+        - listitem [ref=f1e98]:
+          - link "Facebook" [ref=f1e99] [cursor=pointer]:
+            - /url: https://www.facebook.com/Oracle/
+        - listitem [ref=f1e101]:
+          - link "Follow Oracle on X" [ref=f1e102] [cursor=pointer]:
+            - /url: https://x.com/oracle
+            - generic [ref=f1e103]: X
+        - listitem [ref=f1e104]:
+          - link "Oracle on LinkedIn" [ref=f1e105] [cursor=pointer]:
+            - /url: https://www.linkedin.com/company/oracle/
+            - generic [ref=f1e106]: LinkedIn
+        - listitem [ref=f1e107]:
+          - link "Watch Oracle on YouTube" [ref=f1e108] [cursor=pointer]:
+            - /url: https://www.youtube.com/oracle/
+            - generic [ref=f1e109]: YouTube

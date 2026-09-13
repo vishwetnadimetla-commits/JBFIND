@@ -16,3 +16,5 @@ __pycache__/
 
 # Experiment logs — large, regenerated
 experiments.jsonl
+# Playwright MCP temp artifacts
+.playwright-mcp/

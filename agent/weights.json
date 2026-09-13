@@ -1,0 +1,14 @@
+{
+  "scoring": {
+    "role_weight": 0.25,
+    "skill_weight": 0.4,
+    "location_weight": 0.15,
+    "tweak_weight": 0.2,
+    "experience_rejection_overrides": true
+  },
+  "ranking": {
+    "top_n": 50,
+    "pass_first": true,
+    "sort_by": ["skill_match desc", "tweak_level asc", "role_match desc", "location_match desc"]
+  }
+}

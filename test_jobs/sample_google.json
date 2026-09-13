@@ -1,0 +1,15 @@
+{
+  "company": "Google",
+  "title": "Senior Network Infrastructure Engineer",
+  "location": "Bangalore",
+  "experience": "8+ years",
+  "jd": "Google is hiring a Senior Network Infrastructure Engineer to lead design of global data center networks. Requires deep expertise in BGP, MPLS, QoS, and network automation at scale. 8+ years of experience in production networking environments. CCIE or equivalent certification strongly preferred.",
+  "expected": {
+    "experience_status": "REJECT",
+    "experience_reason": "8+ years clearly exceeds candidate's 4 years",
+    "role_match": 0,
+    "skill_match": 75,
+    "location_match": 100,
+    "recommended": false
+  }
+}

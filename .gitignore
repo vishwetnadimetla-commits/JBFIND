@@ -1,0 +1,18 @@
+# Ignore docs folder (user's context docs, private notes)
+docs/
+
+# No secrets in repo
+.env
+*.log
+
+# Node / Python local artifacts
+node_modules/
+__pycache__/
+*.pyc
+
+# SSH keys for Oracle VM — never commit
+*.pem
+*.key
+
+# Experiment logs — large, regenerated
+experiments.jsonl

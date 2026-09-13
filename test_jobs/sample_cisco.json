@@ -1,0 +1,14 @@
+{
+  "company": "Cisco",
+  "title": "Network Engineer",
+  "location": "Bangalore",
+  "experience": "3-5 years",
+  "jd": "Cisco is looking for a Network Engineer with experience in routing, switching, BGP, OSPF, and network security. You will design and maintain enterprise WAN and LAN infrastructure. Experience with SD-WAN, VPN, and Cisco firewalls preferred. Bachelor's degree in Computer Science or equivalent experience required.",
+  "expected": {
+    "experience_status": "PASS",
+    "role_match": 90,
+    "skill_match": 85,
+    "location_match": 100,
+    "recommended": true
+  }
+}

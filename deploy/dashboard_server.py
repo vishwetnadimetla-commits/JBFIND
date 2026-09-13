@@ -37,7 +37,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path in ("/", "/index.html"):
-            with open(os.path.join(os.path.dirname(__file__), "dashboard.html"), "rb") as f:
+            with open(os.path.join(os.path.dirname(__file__), "..", "dashboard.html"), "rb") as f:
                 html = f.read()
             self._send(200, html, "text/html")
             return

@@ -123,7 +123,7 @@
       "position": [1500, 300],
       "parameters": {
         "operation": "appendOrUpdate",
-        "documentId": "={{$credentials.googleSheets.documentId}}",
+        "documentId": "1voOTzO8auKbgrP4J4dPACnwf9Tg2MsgUSCU9w2-mPFY",
         "sheetName": "JOBS",
         "columns": {
           "mappingMode": "defineBelow",

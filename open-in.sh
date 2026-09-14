@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# open-in.sh — open a URL in Chrome, Firefox, or Playwright headless
-# Usage: ./open-in.sh chrome|firefox|headless [url]
-# Default URL: http://localhost:8080
+# open-in.sh — open URL in system default browser (new tab), Chrome, Firefox, or headless
+# Usage: ./open-in.sh [chrome|firefox|headless] [url]
 
-BROWSER="${1:-chrome}"
+BROWSER="${1:-default}"
 URL="${2:-http://localhost:8080}"
 
 case "$BROWSER" in
+  default)
+    echo "[open] Opening in default browser..."
+    open "$URL"
+    ;;
   chrome|google-chrome)
     echo "[open] Opening in Chrome..."
     open -a "/Applications/Google Chrome.app" "$URL"
@@ -16,12 +19,11 @@ case "$BROWSER" in
     open -a "/Applications/Firefox.app" "$URL"
     ;;
   headless)
-    echo "[open] Opening in Playwright headless..."
+    echo "[open] Starting Playwright headless..."
     npx -y @playwright/mcp@latest --headless &
-    echo "  (Playwright MCP headless started — use browser tools to navigate)"
     ;;
   *)
-    echo "Usage: $0 {chrome|firefox|headless} [url]"
+    echo "Usage: $0 {default|chrome|firefox|headless} [url]"
     exit 1
     ;;
 esac

@@ -1,13 +1,13 @@
 # Autoresearch program for JBFind
 
 ## Objective
-Optimize the JBFind job-hunting automation pipeline. The scoring weights, LLM analysis prompts, Apify search queries, and resume tailoring instructions live in `agent/`. Each experiment edits ONE target, triggers a test run via `run.sh`, evaluates via `evaluate.py`, and keeps or reverts.
+Optimize the JBFind job-hunting automation pipeline. The scoring weights, LLM analysis prompts, job search queries, and resume tailoring instructions live in `agent/`. Each experiment edits ONE target, triggers a test run via `run.sh`, evaluates via `evaluate.py`, and keeps or reverts.
 
 ## Setup (one-time, human-assisted)
 1. Oracle VM provisioned with Docker + n8n running (see `deploy/bootstrap.sh`).
 2. n8n instance accessible at `$N8N_URL` with `$N8N_API_KEY` set.
 3. Test workflow `jb-find-test` created in n8n (runs against `test_jobs/`).
-4. Credentials configured in n8n: Apify, Google Sheets, Google Drive, Telegram.
+4. Credentials configured in n8n: Google Sheets, Google Drive, Telegram.
 
 ## Experiment loop (repeat 100+ times per session)
 
@@ -22,7 +22,7 @@ Choose one of the following targets (rotate each experiment):
 - **Weights**: modify one scoring weight in `agent/weights.json` (e.g. skill_weight 0.4 → 0.35)
 - **Analysis prompt**: refine `agent/prompts/jd_analysis.md` (clarify rule, add edge case)
 - **Tailoring prompt**: refine `agent/prompts/resume_tailor.md`
-- **Apify query**: update search keywords/location filters (via n8n workflow API)
+- **Search query**: update search keywords/location filters (in `agent/job_sources.json`, scraped via free JobSpy/OSS APIs)
 
 ### Step 3 — Run the test
 ```bash
@@ -54,7 +54,7 @@ Loop back to Step 1. Target ~100 experiments per overnight session.
 2. JD analysis prompt — clarify experience gate edge cases.
 3. Role match weight — second-order.
 4. Location match weight — low impact, tune last.
-5. Apify search query — find better job listings.
+5. Search query / job sources — find better job listings (`agent/job_sources.json`).
 6. Resume tailor prompt — factual constraints enforcement.
 
 ## Rules

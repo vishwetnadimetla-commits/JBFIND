@@ -14,6 +14,8 @@ services:
       - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASSWORD:-changeme}
       - N8N_METRICS=false
       - N8N_SKIP_WEBHOOK_DEREGISTRATION_SHUTDOWN=true
+      - JBFIND_LLM_URL=${JBFIND_LLM_URL:-ollama:11434}
+      - JBFIND_LLM_MODEL=${JBFIND_LLM_MODEL:-qwen2.5:7b}
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
@@ -51,6 +53,15 @@ services:
     networks:
       - jbfind
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: jbfind-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - jbfind
+
   dashboard:
     build:
       context: ..
@@ -82,6 +93,7 @@ services:
 volumes:
   n8n_data:
   postgres_data:
+  ollama_data:
 
 networks:
   jbfind:

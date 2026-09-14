@@ -39,13 +39,13 @@
       "position": [850, 300],
       "parameters": {
         "method": "POST",
-        "url": "https://api.experientiallabs.ai/v1/chat/completions",
+        "url": "=http://{{ $env.JBFIND_LLM_URL || 'ollama:11434' }}/v1/chat/completions",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "model", "value": "deepseek-v4-flash" },
+            { "name": "model", "value": "={{ $env.JBFIND_LLM_MODEL || 'qwen2.5:7b' }}" },
             { "name": "messages[0][role]", "value": "system" },
             { "name": "messages[0][content]", "value": "=You are a job analyst. Analyze the job listing and return JSON with experience_status (PASS/REJECT/REVIEW/MISSING_DATA), experience_reason, role_match, skill_match, location_match, tweak_level, overall_score. Candidate has 4 years network engineering experience. Return valid JSON only." },
             { "name": "messages[1][role]", "value": "user" },

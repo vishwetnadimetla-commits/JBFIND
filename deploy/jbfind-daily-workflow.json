@@ -84,13 +84,13 @@
       "position": [1100, 300],
       "parameters": {
         "method": "POST",
-        "url": "https://api.experientiallabs.ai/v1/chat/completions",
+        "url": "=http://{{ $env.JBFIND_LLM_URL || 'ollama:11434' }}/v1/chat/completions",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            {"name": "model", "value": "deepseek-v4-flash"},
+            {"name": "model", "value": "={{ $env.JBFIND_LLM_MODEL || 'qwen2.5:7b' }}"},
             {"name": "messages[0][role]", "value": "system"},
             {"name": "messages[0][content]", "value": "=You are a job analyst for a network engineer with 4 years experience. Analyze the job listing below. Return valid JSON only with: experience_status (PASS/REJECT/REVIEW/MISSING_DATA), experience_reason, role_match (0-100), skill_match (0-100), location_match (0-100), tweak_level (0-100), overall_score (0-100), matched_skills (array), missing_skills (array), recommended (bool), why_this_job. Rules: 4 years candidate. PASS if range accepts 4, REJECT if clearly exceeds 4. Never fabricate skills."},
             {"name": "messages[1][role]", "value": "user"},

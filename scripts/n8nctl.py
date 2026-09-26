@@ -16,7 +16,7 @@ import urllib.error
 import urllib.request
 import http.cookiejar
 
-BASE = os.environ.get("N8N_URL", "http://155.248.244.186:5678")
+BASE = os.environ.get("N8N_URL", "https://n8n.jbfind.duckdns.org")
 WF = os.environ.get("JBFIND_WF_ID", "jbfind-daily-workflow")
 EMAIL = os.environ.get("N8N_LOGIN_EMAIL", "")
 PASSWORD = os.environ.get("N8N_LOGIN_PASSWORD", "")

@@ -332,7 +332,8 @@ def _tg(method, **params):
         f"https://api.telegram.org/bot{token}/{method}",
         data=json.dumps(params).encode(), method="POST",
         headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=20) as response:
+    # must outlive the 30s long-poll below, or every idle cycle times out client-side
+    with urllib.request.urlopen(req, timeout=45) as response:
         body = json.loads(response.read())
     if not body.get("ok"):
         raise RuntimeError(f"telegram {method}: {body.get('description')}")
@@ -357,7 +358,7 @@ def _handle_callback(cq):
     reason = f"decided from Telegram by {user}" if decision in REASON_REQUIRED else ""
     try:
         _decide(job_id, decision, reason)
-        _answer(callback_id, f"{decision} — {job_id}")
+        _answer(callback_id, f"Saved: {decision}")
     except HTTPException as exc:
         _answer(callback_id, str(exc.detail))
     except Exception as exc:
@@ -377,7 +378,7 @@ def _poll_loop():
                           allowed_updates=["callback_query"])
         except Exception as exc:
             print(f"getUpdates failed: {exc}", flush=True)
-            time.sleep(15)
+            time.sleep(5)
             continue
         for update in updates:
             offset = update.get("update_id", offset) + 1

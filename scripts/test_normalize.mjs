@@ -120,5 +120,6 @@ const bigSlots = shared.filter((j) => /arbeitnow/.test(j.job_url)).length;
 console.log(`\nbudget split under pressure: arbeitnow=${bigSlots} linkedin=${shared.length - bigSlots}`);
 if (!shared.some((j) => j.source === "linkedin")) fail("the big board starved the small one of LLM slots");
 if (bigSlots >= shared.length) fail("round-robin is not sharing the budget");
+if (shared.length > 8) fail(`LLM budget is ${shared.length}, expected the 8-job cap`);
 
 console.log("\nPASS: per-source field mapping, epoch s/ms dates, url fallbacks, shared LLM budget");

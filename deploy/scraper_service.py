@@ -64,6 +64,25 @@ CAREERS_URLS = {
 }
 
 
+# Tunables the dashboard edits at runtime. A JSON file, not a sheet tab: the
+# service account may read/write cell values but Google blocks it from adding
+# tabs (see reset_jobs_sheet.py), so a SETTINGS tab would need a manual setup
+# step and this would still be the simpler thing.
+SETTINGS_PATH = "/data/settings.json"
+SETTINGS_DEFAULTS = {"min_skill_match": 60}
+SETTINGS_LIMITS = {"min_skill_match": (0, 100)}
+
+
+def settings_read():
+    try:
+        with open(SETTINGS_PATH) as fh:
+            stored = json.load(fh)
+    except (OSError, ValueError):
+        stored = {}
+    return {**SETTINGS_DEFAULTS,
+            **{k: v for k, v in stored.items() if k in SETTINGS_DEFAULTS}}
+
+
 def careers_url(company, company_url=""):
     """Careers portal for a company, else its profile page, else blank."""
     name = (company or "").strip().lower()
@@ -189,6 +208,33 @@ def sheets_upsert(job: dict):
     # Echo the job back so downstream nodes (aggregate, report) keep the ranked
     # fields instead of only the write result.
     return {**job, "sheet_action": action, "sheet_row": row_no}
+
+
+@app.get("/settings")
+def settings_get():
+    return settings_read()
+
+
+@app.put("/settings")
+def settings_put(payload: dict):
+    data = settings_read()
+    for key, value in payload.items():
+        if key not in SETTINGS_LIMITS:
+            continue
+        lo, hi = SETTINGS_LIMITS[key]
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"{key} must be an integer")
+        if not lo <= value <= hi:
+            raise HTTPException(status_code=400, detail=f"{key} must be {lo}..{hi}")
+        data[key] = value
+    os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
+    tmp = SETTINGS_PATH + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(data, fh, indent=2, sort_keys=True)
+    os.replace(tmp, SETTINGS_PATH)   # readers never see a half-written file
+    return data
 
 
 def _col(index):

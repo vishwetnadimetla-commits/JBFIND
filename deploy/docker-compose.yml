@@ -60,6 +60,9 @@ services:
       - JBFIND_NAUKRI_PROXY=${JBFIND_NAUKRI_PROXY:-}
     volumes:
       - /home/ubuntu/.jbfind/secrets:/secrets:ro
+      # settings.json (min_skill_match) lives here so dashboard edits survive
+      # container recreation; the file is created on first PUT.
+      - /opt/jbfind/data:/data
     networks:
       - jbfind
 

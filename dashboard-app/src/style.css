@@ -21,3 +21,11 @@ nav button{display:flex;align-items:center;gap:10px;padding:11px 12px;border:0;b
 .sub-link{display:inline-flex;align-items:center;gap:3px;color:#7fb8d6;text-decoration:none;font:10px 'DM Mono';margin-top:6px}
 .sub-link:hover{text-decoration:underline}
 .src{display:inline-block;font:10px 'DM Mono';color:#6f808b;margin-right:10px;text-transform:lowercase}
+
+.toggle{display:flex;align-items:center;gap:7px;background:#0d1419;border:1px solid #2a3a44;border-radius:8px;color:#8796a3;font-size:11px;padding:8px 10px;white-space:nowrap;cursor:pointer}
+.toggle input{accent-color:#d4f56e;cursor:pointer}
+.settings-panel .settings-row{display:grid;gap:12px;padding:22px;max-width:430px}
+.settings-panel label{font:11px 'DM Mono';color:#8fa0aa;text-transform:uppercase;letter-spacing:.08em}
+.settings-panel input[type=number]{background:#0d1419;border:1px solid #2a3a44;border-radius:8px;color:#edf2f4;padding:10px 12px;font:500 15px 'DM Mono';outline:0;width:130px}
+.settings-panel .button{width:max-content}
+.settings-panel .notice{margin:0;padding:9px 12px}

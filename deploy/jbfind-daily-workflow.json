@@ -39,21 +39,6 @@
       }
     },
     {
-      "id": "scrape-remote-ok",
-      "name": "RemoteOK API",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        450,
-        400
-      ],
-      "parameters": {
-        "method": "GET",
-        "url": "https://remoteok.com/api?tag=mobile",
-        "options": {}
-      }
-    },
-    {
       "id": "scrape-remotive",
       "name": "Remotive API",
       "type": "n8n-nodes-base.httpRequest",
@@ -109,9 +94,9 @@
         "url": "=http://ollama:11434/v1/chat/completions",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  model: 'qwen2.5:7b',\n  messages: [\n    { role: 'system', content: \"You are a job analyst for Vishwet, a mobile application developer with 3+ years of experience. The master resume covers Flutter, Native Android Kotlin/Java, iOS Swift, Jetpack Compose, MVVM/MVP, REST APIs, Firebase, payments, BLE, RFID, testing, and mobile app delivery. Analyze the job listing and return valid JSON only with: experience_status (PASS/REJECT/REVIEW/MISSING_DATA), experience_reason, role_match (0-100), skill_match (0-100), location_match (0-100), tweak_level (0-100), overall_score (0-100), matched_skills (array), missing_skills (array), recommended (bool), why_this_job. PASS when the minimum experience clearly accepts 3+ years; reject clearly higher minimums. Never fabricate skills or experience and do not classify unrelated network-engineering jobs as a match.\" },\n    { role: 'user', content: JSON.stringify($json) }\n  ],\n  max_tokens: 500,\n  temperature: 0.1\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  model: 'qwen2.5:7b',\n  messages: [\n    { role: 'system', content: \"You are a job analyst for Vishwet, a mobile application developer with 3+ years of experience. The master resume covers Flutter, Native Android Kotlin/Java, iOS Swift, Jetpack Compose, MVVM/MVP, REST APIs, Firebase, payments, BLE, RFID, testing, and mobile app delivery. Analyze the job listing and return valid JSON only with: experience_status (PASS/REJECT/REVIEW/MISSING_DATA), experience_reason, role_match (0-100), skill_match (0-100), location_match (0-100), tweak_level (0-100), overall_score (0-100), matched_skills (array), missing_skills (array), recommended (bool), why_this_job. PASS when the minimum experience clearly accepts 3+ years; reject clearly higher minimums. Never fabricate skills or experience and do not classify unrelated network-engineering jobs as a match. Location policy: onsite and hybrid roles based in India (Bengaluru, Hyderabad, Mumbai, Pune, Chennai, Delhi NCR) are the first choice; fully remote roles are acceptable from any country; onsite roles outside India get location_match below 30. Reject outright any role that is not mobile app development - sales, marketing, graphic design, customer success, recruiting, manual QA only, backend only or full stack only - with experience_status REJECT, role_match 0 and skill_match 0, because only skill_match 60 and above is ever reported.\" },\n    { role: 'user', content: JSON.stringify($json) }\n  ],\n  max_tokens: 500,\n  temperature: 0.1\n}) }}",
         "options": {
-          "timeout": 300000
+          "timeout": 1200000
         },
         "batchSize": 1,
         "batchInterval": 1000
@@ -198,7 +183,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Report only jobs the sheet had never seen. sheet_action comes from the\n// scraper's /sheets/upsert response, so 'appended' means brand new to us.\n// Returning zero items makes n8n skip the Telegram node entirely.\nconst out = [];\nfor (const item of items) {\n  const data = item.json.data || [];\n  const fresh = data\n    .filter((j) => j.sheet_action === 'appended')\n    .sort((a, b) => Number(b.overall_score || 0) - Number(a.overall_score || 0));\n  if (fresh.length) out.push({ json: { ...item.json, data: fresh } });\n}\nreturn out;"
+        "jsCode": "// Report only jobs the sheet had never seen AND that clear the skill bar.\n// sheet_action comes from the scraper's /sheets/upsert response, so 'appended'\n// means brand new to us; the skill bar is what stops Score -1 / Skills 0% rows\n// (Regional Sales Manager, Designer...) from reaching Telegram.\n// Returning zero items makes n8n skip the Telegram node entirely.\n//\n// min_skill_match comes from the Get Settings branch (dashboard Settings page,\n// stored in /opt/jbfind/data/settings.json). Any failure - node missing,\n// scraper down, junk value - degrades to the default instead of killing the run.\nlet MIN_SKILL_MATCH = 60;\ntry {\n  const v = Number($('Get Settings').first().json.min_skill_match);\n  if (Number.isFinite(v)) MIN_SKILL_MATCH = v;\n} catch (e) { /* keep the default */ }\n\nconst out = [];\nfor (const item of items) {\n  const data = item.json.data || [];\n  const fresh = data\n    .filter((j) => j.sheet_action === \"appended\"\n      && Number(j.skill_match || 0) >= MIN_SKILL_MATCH)\n    .sort((a, b) => Number(b.overall_score || 0) - Number(a.overall_score || 0));\n  if (fresh.length) out.push({ json: { ...item.json, data: fresh } });\n}\nreturn out;"
       },
       "id": "b1f0a2c4-7d3e-4a55-9c18-2f6b0d9e4a71",
       "name": "Only New Jobs",
@@ -285,6 +270,25 @@
         450,
         1140
       ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://scraper:8001/settings",
+        "sendHeaders": false,
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "get-settings-node",
+      "name": "Get Settings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        640,
+        620
+      ],
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -295,17 +299,6 @@
             "node": "Merge All Sources",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "RemoteOK API": {
-      "main": [
-        [
-          {
-            "node": "Merge All Sources",
-            "type": "main",
-            "index": 1
           }
         ]
       ]
@@ -407,11 +400,6 @@
             "index": 0
           },
           {
-            "node": "RemoteOK API",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Remotive API",
             "type": "main",
             "index": 0
@@ -428,6 +416,11 @@
           },
           {
             "node": "Himalayas API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Settings",
             "type": "main",
             "index": 0
           }
@@ -488,6 +481,9 @@
           }
         ]
       ]
+    },
+    "Get Settings": {
+      "main": []
     }
   },
   "pinData": {},

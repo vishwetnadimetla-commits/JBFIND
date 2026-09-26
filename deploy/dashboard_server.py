@@ -138,6 +138,21 @@ def operations():
     return result
 
 
+def settings_proxy(method, payload=None):
+    """The scraper owns settings storage (/data/settings.json) because n8n
+    reads the same endpoint for its report filter. This layer only
+    authenticates and forwards, so read/write logic exists once."""
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(
+        "http://scraper:8001/settings", data=data, method=method,
+        headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as response:
+            return json.loads(response.read() or b"{}")
+    except urllib.error.HTTPError as exc:
+        raise ValueError(exc.read().decode()[:300] or "invalid settings")
+
+
 def serve_asset(handler, relative):
     root = "/dash/app"
     path = os.path.realpath(os.path.join(root, relative.lstrip("/")))
@@ -179,6 +194,16 @@ class Handler(BaseHTTPRequestHandler):
             serve_asset(self, self.path)
             return
 
+        if self.path == "/api/settings":
+            if not authenticated(self):
+                self._send(401, b'{"error":"authentication required"}')
+                return
+            try:
+                self._send(200, json.dumps(settings_proxy("GET")).encode())
+            except Exception as exc:
+                self._send(502, json.dumps({"error": str(exc)}).encode())
+            return
+
         if self.path in ("/api/jobs", "/api/operations"):
             if not authenticated(self):
                 self._send(401, b'{"error":"authentication required"}')
@@ -199,6 +224,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not authenticated(self):
             self._send(401, b'{"error":"authentication required"}')
+            return
+        if self.path == "/api/settings":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                self._send(200, json.dumps(
+                    settings_proxy("PUT", payload)).encode())
+            except ValueError as exc:
+                self._send(400, json.dumps({"error": str(exc)}).encode())
+            except Exception as exc:
+                self._send(502, json.dumps({"error": str(exc)}).encode())
             return
         if not self.path.startswith("/api/jobs/") or not self.path.endswith("/decision"):
             self._send(404, b'{"error":"not found"}')

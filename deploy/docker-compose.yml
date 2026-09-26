@@ -89,7 +89,7 @@ services:
       - "127.0.0.1:8080:8080"
     environment:
       - JBFINDS_GOOGLE_CLIENT_ID=${JBFINDS_GOOGLE_CLIENT_ID:-}
-      - JBFINDS_ALLOWED_EMAILS=${JBFINDS_ALLOWED_EMAILS:-vishwet.nadimetla@gmail.com}
+      - JBFINDS_ALLOWED_EMAILS=${JBFINDS_ALLOWED_EMAILS:-vishwet.nadimetla@gmail.com,mr.vishwet2705@gmail.com}
     volumes:
       - /home/ubuntu/.jbfind/secrets:/secrets:ro
       - /home/ubuntu/.jbfind/secrets/telegram.env:/run/secrets/telegram.env:ro

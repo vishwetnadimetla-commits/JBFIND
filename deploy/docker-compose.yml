@@ -55,6 +55,9 @@ services:
     environment:
       - JBFIND_SHEET_ID=${JBFIND_SHEET_ID:-1voOTzO8auKbgrP4J4dPACnwf9Tg2MsgUSCU9w2-mPFY}
       - JBFIND_SHEET_TAB=${JBFIND_SHEET_TAB:-JOBS}
+      # Residential proxy for Naukri, format http://user:pass@host:port.
+      # Empty = naukri stays off; the site answers 406 recaptcha without one.
+      - JBFIND_NAUKRI_PROXY=${JBFIND_NAUKRI_PROXY:-}
     volumes:
       - /home/ubuntu/.jbfind/secrets:/secrets:ro
     networks:
@@ -83,7 +86,6 @@ services:
     volumes:
       - /home/ubuntu/.jbfind/secrets:/secrets:ro
       - /home/ubuntu/.jbfind/secrets/telegram.env:/run/secrets/telegram.env:ro
-      - /opt/jbfind/deploy/dashboard.html:/dash/dashboard.html:ro
     networks:
       - jbfind
 

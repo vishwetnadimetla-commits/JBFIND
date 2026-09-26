@@ -4,7 +4,7 @@
   "nodes": [
     {
       "id": "cron-trigger",
-      "name": "Hourly Trigger",
+      "name": "30-Min Trigger",
       "type": "n8n-nodes-base.cron",
       "typeVersion": 1,
       "position": [
@@ -15,8 +15,9 @@
         "triggerTimes": {
           "item": [
             {
-              "mode": "everyHour",
-              "minute": 0
+              "mode": "everyX",
+              "value": 30,
+              "unit": "minutes"
             }
           ]
         }
@@ -33,7 +34,7 @@
       ],
       "parameters": {
         "method": "GET",
-        "url": "http://scraper:8001/scrape?q=mobile+application+developer&location=India%20(Hyderabad%2C%20Bengaluru%2C%20Mumbai%2C%20Pune)&sites=indeed%2Clinkedin%2Cnaukri%2Cgoogle&count=100&hours_old=168",
+        "url": "http://scraper:8001/scrape?q=mobile+application+developer&location=India%20(Hyderabad%2C%20Bengaluru%2C%20Mumbai%2C%20Pune)&sites=indeed%2Clinkedin%2Cnaukri%2Cgoogle&count=100&hours_old=24",
         "options": {}
       }
     },
@@ -48,7 +49,7 @@
       ],
       "parameters": {
         "method": "GET",
-        "url": "https://remoteok.com/api?tag=network",
+        "url": "https://remoteok.com/api?tag=mobile",
         "options": {}
       }
     },
@@ -91,7 +92,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "\nconst LIST_KEYS = ['jobs', 'results', 'data', 'items', 'posts'];\nconst raw = $input.all().map(i => i.json);\nconst list = [];\nfor (const r of raw) {\n  if (Array.isArray(r)) list.push(...r);\n  else if (r && typeof r === 'object') {\n    const k = LIST_KEYS.find(k => Array.isArray(r[k]));\n    if (k) list.push(...r[k]);\n    else list.push(r);\n  } else if (r !== null && r !== undefined) list.push(r);\n}\n\nconst pick = (...v) => v.find(x => x !== undefined && x !== null && x !== '') || '';\nconst hash = s => {\n  let h = 0x811c9dc5;\n  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }\n  return (h >>> 0).toString(16).padStart(8, '0');\n};\n\nconst seenUrls = new Set();\nconst seenKeys = new Set();\nconst out = [];\nfor (const job of list) {\n  if (!job || typeof job !== 'object') continue;\n  const company  = pick(job.company_name, job.company, job.author);\n  const title    = pick(job.title, job.job_title, job.position);\n  const location = pick(job.city, job.location, job.candidate_required_location);\n  if (!company && !title) continue;\n  const url    = pick(job.url, job.job_url, job.apply_url);\n  const jd     = pick(job.description, job.body, job.job_description);\n  const source = job.source || job.site || 'scraped';\n  const posted = pick(job.date_posted, job.pubDate, job.date, job.created_at);\n\n  const normUrl = String(url).trim().toLowerCase().replace(/\\/+$/, '');\n  if (normUrl && seenUrls.has(normUrl)) continue;\n  if (normUrl) seenUrls.add(normUrl);\n  const key = `${company.toLowerCase().trim()}|${title.toLowerCase().trim()}|${location.toLowerCase().trim()}`;\n  if (seenKeys.has(key)) continue;\n  seenKeys.add(key);\n\n  out.push({\n    job_id: hash(normUrl || key),\n    company, title, location,\n    experience: '',\n    job_url: url,\n    jd: String(jd).slice(0, 4000),\n    source,\n    posted_date: posted,\n    discovered_date: new Date().toISOString()\n  });\n}\n\n// ponytail: LLM is 60s/call on CPU, so prefilter + cap before spending LLM time.\nconst MOBILE = /(flutter|android|\\bios\\b|iphone|swift|kotlin|mobile app|react native|\\bdart\\b|jetpack|mvvm|mvp|firebase|app development|app store|google play|android studio|xcode)/i;\nconst STRONG = /(flutter|android|ios|iphone|swift|kotlin|react native|mobile app)/i;\nfor (const j of out) j._rel = (STRONG.test(j.title) ? 2 : 0) + (MOBILE.test(j.title + ' ' + j.jd) ? 1 : 0);\nconst relevant = out.filter(j => j._rel > 0).sort((a, b) => b._rel - a._rel);\nconst LLM_BUDGET = 12;\nconst keep = (relevant.length ? relevant : out).slice(0, LLM_BUDGET);\nfor (const j of keep) delete j._rel;\nreturn keep;\n"
+        "jsCode": "\nconst LIST_KEYS = ['jobs', 'results', 'data', 'items', 'posts'];\nconst raw = $input.all().map(i => i.json);\nconst list = [];\nfor (const r of raw) {\n  if (Array.isArray(r)) list.push(...r);\n  else if (r && typeof r === 'object') {\n    const k = LIST_KEYS.find(k => Array.isArray(r[k]));\n    if (k) list.push(...r[k]);\n    else list.push(r);\n  } else if (r !== null && r !== undefined) list.push(r);\n}\n\nconst pick = (...v) => v.find(x => x !== undefined && x !== null && x !== '') || '';\nconst hash = s => {\n  let h = 0x811c9dc5;\n  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }\n  return (h >>> 0).toString(16).padStart(8, '0');\n};\n\nconst seenUrls = new Set();\nconst seenKeys = new Set();\nconst out = [];\nfor (const job of list) {\n  if (!job || typeof job !== 'object') continue;\n  const company  = pick(job.company_name, job.company, job.author);\n  const title    = pick(job.title, job.job_title, job.position);\n  const location = pick(job.city, job.location, job.candidate_required_location);\n  if (!company && !title) continue;\n  const url    = pick(job.url, job.job_url, job.apply_url);\n  const jd     = pick(job.description, job.body, job.job_description);\n  const source = job.source || job.site || 'scraped';\n  const posted = pick(job.date_posted, job.pubDate, job.date, job.created_at);\n\n  const normUrl = String(url).trim().toLowerCase().replace(/\\/+$/, '');\n  if (normUrl && seenUrls.has(normUrl)) continue;\n  if (normUrl) seenUrls.add(normUrl);\n  const key = `${company.toLowerCase().trim()}|${title.toLowerCase().trim()}|${location.toLowerCase().trim()}`;\n  if (seenKeys.has(key)) continue;\n  seenKeys.add(key);\n\n  out.push({\n    job_id: hash(normUrl || key),\n    company, title, location,\n    company_url: pick(job.company_url, job.employer_url),\n    experience: '',\n    job_url: url,\n    jd: String(jd).slice(0, 4000),\n    source,\n    posted_date: posted,\n    discovered_date: new Date().toISOString()\n  });\n}\n\n// ponytail: LLM is 60s/call on CPU, so prefilter + cap before spending LLM time.\nconst MOBILE = /(flutter|android|\\bios\\b|iphone|swift|kotlin|mobile app|react native|\\bdart\\b|jetpack|mvvm|mvp|firebase|app development|app store|google play|android studio|xcode)/i;\nconst STRONG = /(flutter|android|ios|iphone|swift|kotlin|react native|mobile app)/i;\nfor (const j of out) j._rel = (STRONG.test(j.title) ? 2 : 0) + (MOBILE.test(j.title + ' ' + j.jd) ? 1 : 0);\nconst relevant = out.filter(j => j._rel > 0).sort((a, b) => b._rel - a._rel);\nconst LLM_BUDGET = 12;\nconst keep = (relevant.length ? relevant : out).slice(0, LLM_BUDGET);\nfor (const j of keep) delete j._rel;\nreturn keep;\n"
       }
     },
     {
@@ -124,7 +125,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "\n// The LLM node is an httpRequest, so its output replaces the input item and all\n// job fields are gone. The HTTP Request node runs items in order, so zip back\n// against the Normalize node's output by index to recover company/title/url.\nconst src = $('Normalize + Dedupe').all();\nconst results = [];\n\n$input.all().forEach((it, i) => {\n  const j = it.json || {};\n  const base = (src[i] && src[i].json) || {};\n  let raw = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '{}';\n  raw = String(raw).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();\n  let a = {};\n  try { a = JSON.parse(raw); } catch (e) { a = {}; }\n\n  if (a.experience_status === 'REJECT') { a.overall_score = -1; a.recommended = false; }\n\n  results.push({\n    job_id: base.job_id || '',\n    company: base.company || '',\n    source: base.source || '',\n    jd: base.jd || '',\n    posted_date: base.posted_date || '',\n    discovered_date: base.discovered_date || new Date().toISOString(),\n    last_updated: new Date().toISOString(),\n    title: base.title || '',\n    location: base.location || '',\n    job_url: base.job_url || '',\n    experience: '',\n    experience_status: a.experience_status || 'MISSING_DATA',\n    experience_reason: a.experience_reason || '',\n    role_match: a.role_match || 0,\n    skill_match: a.skill_match || 0,\n    location_match: a.location_match ?? 50,\n    tweak_level: a.tweak_level || 50,\n    overall_score: a.overall_score || 0,\n    recommended: !!a.recommended,\n    why_this_job: a.why_this_job || '',\n    matched_skills: a.matched_skills || [],\n    missing_skills: a.missing_skills || [],\n    review_required: !!a.review_required\n  });\n});\n\nconst pass = results.filter(r => r.experience_status === 'PASS');\nconst other = results.filter(r => r.experience_status !== 'PASS');\npass.sort((a, b) =>\n  ((b.overall_score || 0) - (a.overall_score || 0))\n  || ((a.tweak_level || 0) - (b.tweak_level || 0))\n  || ((b.skill_match || 0) - (a.skill_match || 0))\n);\nreturn pass.concat(other).slice(0, 100);\n"
+        "jsCode": "\n// The LLM node is an httpRequest, so its output replaces the input item and all\n// job fields are gone. The HTTP Request node runs items in order, so zip back\n// against the Normalize node's output by index to recover company/title/url.\nconst src = $('Normalize + Dedupe').all();\nconst results = [];\n\n$input.all().forEach((it, i) => {\n  const j = it.json || {};\n  const base = (src[i] && src[i].json) || {};\n  let raw = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '{}';\n  raw = String(raw).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();\n  let a = {};\n  try { a = JSON.parse(raw); } catch (e) { a = {}; }\n\n  if (a.experience_status === 'REJECT') { a.overall_score = -1; a.recommended = false; }\n\n  results.push({\n    job_id: base.job_id || '',\n    company: base.company || '',\n    source: base.source || '',\n    jd: base.jd || '',\n    posted_date: base.posted_date || '',\n    discovered_date: base.discovered_date || new Date().toISOString(),\n    last_updated: new Date().toISOString(),\n    title: base.title || '',\n    location: base.location || '',\n    company_url: base.company_url || '',\n    job_url: base.job_url || '',\n    experience: '',\n    experience_status: a.experience_status || 'MISSING_DATA',\n    experience_reason: a.experience_reason || '',\n    role_match: a.role_match || 0,\n    skill_match: a.skill_match || 0,\n    location_match: a.location_match ?? 50,\n    tweak_level: a.tweak_level || 50,\n    overall_score: a.overall_score || 0,\n    recommended: !!a.recommended,\n    why_this_job: a.why_this_job || '',\n    matched_skills: a.matched_skills || [],\n    missing_skills: a.missing_skills || [],\n    review_required: !!a.review_required\n  });\n});\n\nconst pass = results.filter(r => r.experience_status === 'PASS');\nconst other = results.filter(r => r.experience_status !== 'PASS');\npass.sort((a, b) =>\n  ((b.overall_score || 0) - (a.overall_score || 0))\n  || ((a.tweak_level || 0) - (b.tweak_level || 0))\n  || ((b.skill_match || 0) - (a.skill_match || 0))\n);\nreturn pass.concat(other).slice(0, 100);\n"
       }
     },
     {
@@ -158,7 +159,7 @@
       ],
       "parameters": {
         "chatId": "8511150256",
-        "text": "={{ \"JBFind Daily Report\\n\" + $now.toFormat(\"DD MMM YYYY\") + \"\\n\\n\" + (($json.data || []).filter(j => j.recommended).slice(0, 10).map((j, i) => (i + 1) + \". \" + j.company + \" - \" + j.title +\"\\n   \" + j.location + \"\\n   Score \" + j.overall_score +\" | Skills \" + j.skill_match + \"%\\n   \" + j.why_this_job +\"\\n   \" + j.job_url).join(\"\\n\\n\") || \"No new recommended jobs today.\") }}",
+        "text": "={{ \"JBFind \\u2014 \" + $json.data.length + \" new job\" + ($json.data.length === 1 ? \"\" : \"s\") + \"\\n\" + new Date().toISOString().slice(0, 16).replace(\"T\", \" \") + \" UTC\\n\\n\" + $json.data.slice(0, 10).map((j, i) => (i + 1) + \". \" + j.company + \" \\u2014 \" + j.title + \"\\n   Score \" + j.overall_score + \" | Skills \" + j.skill_match + \"% | \" + j.location + \"\\n   Posted: \" + (j.posted_date || (\"no date, first seen \" + String(j.discovered_date || \"\").slice(0, 10))) + (j.recommended ? \"  \\u2605 RECOMMENDED\" : \"\") + \"\\n   \" + j.why_this_job + \"\\n   \" + j.job_url).join(\"\\n\\n\") }}",
         "additionalFields": {}
       },
       "credentials": {
@@ -192,30 +193,54 @@
         "destinationFieldName": "data",
         "options": {}
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Report only jobs the sheet had never seen. sheet_action comes from the\n// scraper's /sheets/upsert response, so 'appended' means brand new to us.\n// Returning zero items makes n8n skip the Telegram node entirely.\nconst out = [];\nfor (const item of items) {\n  const data = item.json.data || [];\n  const fresh = data\n    .filter((j) => j.sheet_action === 'appended')\n    .sort((a, b) => Number(b.overall_score || 0) - Number(a.overall_score || 0));\n  if (fresh.length) out.push({ json: { ...item.json, data: fresh } });\n}\nreturn out;"
+      },
+      "id": "b1f0a2c4-7d3e-4a55-9c18-2f6b0d9e4a71",
+      "name": "Only New Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1810,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "err-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "8511150256",
+        "text": "={{ \"\u26a0\ufe0f JBFind pipeline FAILED\\n\\nWorkflow: \" + $json.workflow.name + \"\\nNode: \" + $json.execution.lastNodeExecuted + \"\\nMode: \" + $json.execution.mode + \"\\n\\n\" + $json.execution.error.message }}",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "jbfind-reporter",
+          "name": "JBFind Reporter Bot"
+        }
+      },
+      "id": "send-error-alert",
+      "name": "Send Error Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        500,
+        700
+      ]
     }
   ],
   "connections": {
-    "Hourly Trigger": {
-      "main": [
-        [
-          {
-            "node": "JobSpy Scrape",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "RemoteOK API",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Remotive API",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "JobSpy Scrape": {
       "main": [
         [
@@ -319,7 +344,50 @@
       "main": [
         [
           {
+            "node": "Only New Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "30-Min Trigger": {
+      "main": [
+        [
+          {
+            "node": "JobSpy Scrape",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RemoteOK API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Remotive API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only New Jobs": {
+      "main": [
+        [
+          {
             "node": "Send Telegram Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send Error Alert",
             "type": "main",
             "index": 0
           }

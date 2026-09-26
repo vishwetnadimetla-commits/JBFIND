@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-RUN pip install --no-cache-dir fastapi uvicorn python-jobspy
+RUN pip install --no-cache-dir fastapi uvicorn python-jobspy google-auth
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 RUN python3 -m playwright install chromium --with-deps 2>/dev/null || true

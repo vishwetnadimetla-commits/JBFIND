@@ -11,6 +11,7 @@ __pycache__/
 *.pyc
 
 # SSH keys for Oracle VM — never commit
+keys/
 *.pem
 *.key
 
@@ -18,3 +19,4 @@ __pycache__/
 experiments.jsonl
 # Playwright MCP temp artifacts
 .playwright-mcp/
+tmp_resume/

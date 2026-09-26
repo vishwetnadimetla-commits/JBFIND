@@ -87,7 +87,8 @@
 
 <!-- Top Jobs -->
 <div class="section-title">Top Recommended <span class="count" id="job-count"></span></div>
-<table id="jobs-table"><thead><tr><th>Company</th><th>Title</th><th>Location</th><th>Score</th><th>Skills</th><th>Why</th><th>Link</th></tr></thead><tbody></tbody></table>
+<label>Filter <select id="decision-filter" onchange="load()"><option value="">All</option><option value="UNDECIDED">Undecided</option><option value="APPLY">Apply</option><option value="NOT_SUITABLE">Not suitable</option><option value="REVIEW">Review</option></select></label>
+<table id="jobs-table"><thead><tr><th>Company</th><th>Title</th><th>Location</th><th>Score</th><th>Skills</th><th>Why</th><th>Link</th><th>Decision</th></tr></thead><tbody></tbody></table>
 
 <!-- Help -->
 <div class="help">
@@ -132,6 +133,17 @@ function scoreColor(s) {
   return n >= 80 ? 'green' : n >= 50 ? 'yellow' : 'red';
 }
 
+async function decide(jobId, decision) {
+  const reason = decision === 'NOT_SUITABLE' ? prompt('Why is this not suitable?', '') : '';
+  if (decision === 'NOT_SUITABLE' && reason === null) return;
+  const r = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/decision`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({decision, reason: reason || ''})
+  });
+  if (!r.ok) alert('Could not save the decision');
+  await load();
+}
+
 async function load() {
   // Fetch JOBS sheet
   const rows = await fetchJobs();
@@ -140,9 +152,9 @@ async function load() {
   document.getElementById('last-updated').dataset.raw = now;
 
   const count = rows.length;
-  const recommended = rows.filter(r => (r[16] || '').toLowerCase() === 'true' || r[16] === 'TRUE');
-  const rejected = rows.filter(r => (r[4] || '') === 'REJECT');
-  const scores = recommended.map(r => parseFloat(r[10])).filter(s => !isNaN(s));
+  const recommended = rows.filter(r => String(r.Recommended).toLowerCase() === 'true');
+  const rejected = rows.filter(r => r.Experience_Status === 'REJECT');
+  const scores = recommended.map(r => parseFloat(r.Overall_Score)).filter(s => !isNaN(s));
 
   document.getElementById('jobs-today').textContent = count;
   document.getElementById('recommended').textContent = recommended.length;
@@ -182,7 +194,7 @@ async function load() {
 
   // Sources
   const sources = {};
-  rows.forEach(r => { const s = r[11] || 'unknown'; sources[s] = (sources[s]||0) + 1; });
+  rows.forEach(r => { const s = r.Job_Source || 'unknown'; sources[s] = (sources[s]||0) + 1; });
   const srcEl = document.getElementById('sources-table').querySelector('tbody');
   const srcKeys = Object.keys(sources);
   document.getElementById('source-count').textContent = `(${srcKeys.length})`;
@@ -191,22 +203,28 @@ async function load() {
   `).join('');
 
   // Top jobs
+  const filter = document.getElementById('decision-filter').value;
   const top = rows
-    .filter(r => r[4] === 'PASS' || r[4] === 'PASS')
-    .sort((a, b) => parseFloat(b[10]||0) - parseFloat(a[10]||0))
+    .filter(r => r.Experience_Status === 'PASS' && (!filter || (filter === 'UNDECIDED' ? !r.Decision : r.Decision === filter)))
+    .sort((a, b) => parseFloat(b.Overall_Score||0) - parseFloat(a.Overall_Score||0))
     .slice(0, 20);
   document.getElementById('job-count').textContent = `(${top.length})`;
   const jobEl = document.getElementById('jobs-table').querySelector('tbody');
   jobEl.innerHTML = top.map(r => {
-    const score = r[10] || '—';
+    const score = r.Overall_Score || '—';
+    const jobId = r.Job_ID || '';
+    const decision = r.Decision || '';
     return `<tr>
-      <td>${r[1] || '?'}</td>
-      <td>${r[2] || '?'}</td>
-      <td>${r[3] || '?'}</td>
+      <td>${r.Company || '?'}</td>
+      <td>${r.Job_Title || '?'}</td>
+      <td>${r.Location || '?'}</td>
       <td class="value ${scoreColor(score)}">${score}</td>
-      <td>${r[9] || '—'}</td>
-      <td>${(r[17] || '').slice(0, 60)}</td>
-      <td>${r[12] ? `<a href="${r[12]}" target="_blank">Apply</a>` : '—'}</td>
+      <td>${r.Skill_Match || '—'}</td>
+      <td>${(r.Why_This_Job || '').slice(0, 60)}</td>
+      <td>${r.Job_URL ? `<a href="${r.Job_URL}" target="_blank">Open</a>` : '—'}</td>
+      <td><select data-job-id="${jobId}" onchange="decide(this.dataset.jobId, this.value)">
+        <option value="">${decision || 'Choose'}</option><option value="APPLY">Apply</option><option value="NOT_SUITABLE">Not suitable</option><option value="REVIEW">Review</option><option value="CLEAR">Clear</option>
+      </select></td>
     </tr>`;
   }).join('');
 

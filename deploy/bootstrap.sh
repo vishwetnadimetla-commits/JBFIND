@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+PROJECT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
+
 # bootstrap.sh — one-shot provision for Oracle ARM VM
 # Run once after SSH-ing into the fresh Ubuntu 24.04 LTS VM.
 # Usage: chmod +x bootstrap.sh && sudo ./bootstrap.sh
@@ -23,8 +26,10 @@ systemctl start docker
 echo "[bootstrap] Creating n8n directory..."
 mkdir -p /opt/jbfind
 
-echo "[bootstrap] Copying docker-compose.yml..."
-cp ./docker-compose.yml /opt/jbfind/docker-compose.yml
+echo "[bootstrap] Copying deployment files..."
+rm -rf /opt/jbfind/deploy
+cp -R "$PROJECT_DIR/deploy" /opt/jbfind/deploy
+cp "$PROJECT_DIR/dashboard.html" /opt/jbfind/dashboard.html
 
 echo "[bootstrap] Creating .env (override before first start)..."
 if [ ! -f /opt/jbfind/.env ]; then
@@ -35,7 +40,7 @@ ENVEOF
 fi
 
 echo "[bootstrap] Starting stack..."
-cd /opt/jbfind && docker compose up -d
+cd /opt/jbfind/deploy && docker compose --env-file /opt/jbfind/.env up -d
 
 echo "[bootstrap] Done. n8n should be available at http://$(hostname -I | awk '{print $1}'):5678"
 echo "[bootstrap] Run: docker compose logs -f to watch startup."

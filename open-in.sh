@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
-# open-in.sh — open URL in system default browser (new tab), Chrome, Firefox, or headless
-# Usage: ./open-in.sh [chrome|firefox|headless] [url]
+# open-in.sh — open URL in a browser, optionally with an attachable endpoint
+# Usage: ./open-in.sh [active|default|chrome|firefox|headless|attach-chrome|attach-firefox] [url]
 
 BROWSER="${1:-default}"
 URL="${2:-http://localhost:8080}"
 
 case "$BROWSER" in
+  active)
+    FIREFOX_RUNNING=$(osascript -e 'tell application "System Events" to exists process "Firefox"' 2>/dev/null || true)
+    CHROME_RUNNING=$(osascript -e 'tell application "System Events" to exists process "Google Chrome"' 2>/dev/null || true)
+    if [ "$FIREFOX_RUNNING" = "true" ]; then
+      open -a "Firefox" "$URL"
+    elif [ "$CHROME_RUNNING" = "true" ]; then
+      open -a "Google Chrome" "$URL"
+    else
+      echo "[open] Neither Firefox nor Google Chrome is running." >&2
+      exit 1
+    fi
+    ;;
   default)
     echo "[open] Opening in default browser..."
     open "$URL"
@@ -22,8 +34,11 @@ case "$BROWSER" in
     echo "[open] Starting Playwright headless..."
     npx -y @playwright/mcp@latest --headless &
     ;;
+  attach-chrome|attach-firefox)
+    "$(dirname "$0")/attach-browser.sh" "${BROWSER#attach-}" "$URL"
+    ;;
   *)
-    echo "Usage: $0 {default|chrome|firefox|headless} [url]"
+    echo "Usage: $0 {active|default|chrome|firefox|headless|attach-chrome|attach-firefox} [url]"
     exit 1
     ;;
 esac

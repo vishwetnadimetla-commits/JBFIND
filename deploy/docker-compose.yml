@@ -55,9 +55,6 @@ services:
     environment:
       - JBFIND_SHEET_ID=${JBFIND_SHEET_ID:-1voOTzO8auKbgrP4J4dPACnwf9Tg2MsgUSCU9w2-mPFY}
       - JBFIND_SHEET_TAB=${JBFIND_SHEET_TAB:-JOBS}
-      # Residential proxy for Naukri, format http://user:pass@host:port.
-      # Empty = naukri stays off; the site answers 406 recaptcha without one.
-      - JBFIND_NAUKRI_PROXY=${JBFIND_NAUKRI_PROXY:-}
     volumes:
       - /home/ubuntu/.jbfind/secrets:/secrets:ro
       # settings.json (min_skill_match) lives here so dashboard edits survive

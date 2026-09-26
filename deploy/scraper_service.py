@@ -118,6 +118,75 @@ def clean(value):
         return [clean(v) for v in value]
     return value
 
+def scrape_naukri(search_term, count=20):
+    """Naukri over plain HTTP answers 406 recaptcha, and Playwright's headless
+    *shell* gets 403 from Akamai - but full Chromium headless loads the search
+    page and its own /jobapi/v3/search XHR hands back JSON. Verified from this
+    host on 2026-09-26 (200, 20 cards); the search is public, so no login
+    cookie is needed. Any failure means this source alone comes back empty."""
+    from playwright.sync_api import sync_playwright
+
+    seo = "-".join(search_term.lower().split()) + "-jobs"
+    details = []
+
+    def collect(response):
+        if "/jobapi/v3/search" in response.url:
+            try:
+                details.extend(response.json().get("jobDetails") or [])
+            except Exception:
+                pass
+
+    response = None
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True, channel="chromium",
+                args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
+            # The browser-identifying bits the probe needed too: default
+            # HeadlessChrome UA makes Naukri serve its bot shell instead of the
+            # search page.
+            page = browser.new_page(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) "
+                           "Chrome/131.0.0.0 Safari/537.36",
+                locale="en-US", viewport={"width": 1366, "height": 900})
+            page.on("response", collect)
+            response = page.goto(f"https://www.naukri.com/{seo}",
+                                 wait_until="domcontentloaded", timeout=45000)
+            # the search widget mounts first, then fires the XHR we collect
+            page.wait_for_selector("div.srp-jobtuple-wrapper", timeout=25000)
+            browser.close()
+    except Exception as exc:
+        print(f"naukri scrape failed: {exc} "
+              f"(nav={getattr(response, 'status', '?')})", flush=True)
+        return []
+
+    out = []
+    for job in details[:count]:
+        ph = job.get("placeholders") or []
+        loc = next((x.get("label", "") for x in ph if x.get("type") == "location"), "")
+        title = job.get("title", "")
+        body = job.get("jobDescription") or job.get("tagsAndSkills") or ""
+        out.append({
+            "source": "naukri",
+            "title": title,
+            "company": job.get("companyName", ""),
+            "company_url": "",
+            "location": loc,
+            "country": "India",
+            "is_remote": "work from home" in f"{title} {loc}".lower(),
+            "description": text(body)[:3000],
+            "url": f"https://www.naukri.com{job.get('jdURL') or '/job/' + str(job.get('jobId', ''))}",
+            "date_posted": text(job.get("createdDate") or job.get("footerPlaceholderLabel")),
+            "job_type": "",
+            "salary_min": 0,
+            "salary_max": 0,
+            "salary_currency": "",
+            "experience": text(job.get("experienceText")),
+        })
+    return out
+
+
 @app.get("/scrape")
 def scrape(
     q: str = Query(..., min_length=1),
@@ -127,28 +196,22 @@ def scrape(
     hours_old: int = Query(168, ge=1, le=720),
 ):
     site_list = [s.strip() for s in sites.split(",")]
-    # Naukri answers 406 recaptcha unless requests come from a residential IP.
-    # Only that one site gets the proxy; proxying LinkedIn/Indeed gets us
-    # rate-limited for nothing.
-    proxy = os.environ.get("JBFIND_NAUKRI_PROXY", "").strip()
-    proxies = None
-    if proxy:
-        proxies = {"http": proxy, "https": proxy}
-    if "naukri" in site_list and not proxy:
-        site_list = [s for s in site_list if s != "naukri"]
+    # Naukri runs through the browser-backed scraper above; JobSpy's plain-HTTP
+    # one for it is 406 recaptcha from this host, so it never reaches scrape_jobs.
+    naukri = scrape_naukri(q, count=min(count, 20)) if "naukri" in site_list else []
+    site_list = [s for s in site_list if s != "naukri"]
     jobs = scrape_jobs(
-        site_name=site_list,
+        site_name=site_list or ["indeed"],
         search_term=q,
         google_search_term=f"{q} jobs near {location}",
         location=location,
         results_wanted=count,
         hours_old=hours_old,
         country_indeed="India",
-        proxies=proxies,
         verbose=0,
-    )
+    ) if site_list else None
     result = []
-    for _, job in jobs.iterrows():
+    for _, job in (jobs.iterrows() if jobs is not None and len(jobs) else []):
         result.append({
             "source": job.get("site", ""),
             "title": job.get("title", ""),
@@ -166,6 +229,7 @@ def scrape(
             "salary_currency": text(job.get("currency")),
             "experience": text(job.get("experience")),
         })
+    result.extend(naukri)
     return clean(result)
 
 

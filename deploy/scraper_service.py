@@ -5,6 +5,7 @@ from google.auth.transport.requests import Request
 import json
 import math
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -272,6 +273,130 @@ def sheets_upsert(job: dict):
     # Echo the job back so downstream nodes (aggregate, report) keep the ranked
     # fields instead of only the write result.
     return {**job, "sheet_action": action, "sheet_row": row_no}
+
+
+DECISIONS = {"APPLY", "REJECT", "NOT_SUITABLE", "CLEAR"}
+REASON_REQUIRED = {"REJECT", "NOT_SUITABLE"}
+
+
+def _decide(job_id, decision, reason=""):
+    """Patch only the three decision columns. /sheets/upsert rewrites the
+    whole row, so a caller that only wants to decide would blank the job."""
+    if decision not in DECISIONS:
+        raise HTTPException(status_code=400, detail="invalid decision")
+    reason = (reason or "").strip()
+    if decision in REASON_REQUIRED and not reason:
+        raise HTTPException(status_code=400, detail=f"{decision} requires a reason")
+    row = _row_index().get(str(job_id))
+    if not row:
+        raise HTTPException(status_code=404, detail="job not found")
+    clear = decision == "CLEAR"
+    stamp = "" if clear else time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    rng = f"{SHEET_TAB}!{_col(19)}{row}:{_col(21)}{row}"
+    _api("PUT", f"{SHEETS_API}/{SHEET_ID}/values/{rng}?valueInputOption=RAW",
+         {"values": [["" if clear else decision,
+                      "" if clear else reason, stamp]]})
+    return {"ok": True, "job_id": job_id, "decision": decision}
+
+
+@app.post("/decide")
+def decide(payload: dict):
+    return _decide(payload.get("job_id", ""), payload.get("decision", ""),
+                   payload.get("reason", ""))
+
+
+# Telegram inline-button presses arrive as callback_query updates. n8n's
+# Telegram Trigger only takes those over an HTTPS webhook, which this host
+# does not have until the DuckDNS/Caddy workstream, so the scraper polls
+# getUpdates itself. Nothing else on the bot polls (the dashboard stopped
+# long ago), so there is no competing consumer.
+TG_OFFSET_PATH = "/data/tg_offset"
+
+
+def tg_token():
+    try:
+        with open("/run/secrets/telegram.env") as fh:
+            for line in fh:
+                if line.startswith("JB_FINDER_REPORTER_TOKEN="):
+                    return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
+def _tg(method, **params):
+    token = tg_token()
+    if not token:
+        raise RuntimeError("bot token not mounted")
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/{method}",
+        data=json.dumps(params).encode(), method="POST",
+        headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=20) as response:
+        body = json.loads(response.read())
+    if not body.get("ok"):
+        raise RuntimeError(f"telegram {method}: {body.get('description')}")
+    return body.get("result", [])
+
+
+def _answer(callback_id, text):
+    try:
+        _tg("answerCallbackQuery", callback_query_id=callback_id, text=text)
+    except Exception as exc:
+        print(f"answerCallbackQuery failed: {exc}", flush=True)
+
+
+def _handle_callback(cq):
+    parts = str(cq.get("data") or "").split(":", 2)
+    callback_id = cq.get("id", "")
+    if len(parts) != 3 or parts[0] != "d":
+        _answer(callback_id, "Unknown button.")
+        return
+    _, decision, job_id = parts
+    user = (cq.get("from") or {}).get("first_name", "you")
+    reason = f"decided from Telegram by {user}" if decision in REASON_REQUIRED else ""
+    try:
+        _decide(job_id, decision, reason)
+        _answer(callback_id, f"{decision} — {job_id}")
+    except HTTPException as exc:
+        _answer(callback_id, str(exc.detail))
+    except Exception as exc:
+        print(f"callback failed: {exc}", flush=True)
+        _answer(callback_id, "Could not save the decision.")
+
+
+def _poll_loop():
+    try:
+        offset = int(open(TG_OFFSET_PATH).read().strip())
+    except (OSError, ValueError):
+        offset = 0
+    print("telegram poller started", flush=True)
+    while True:
+        try:
+            updates = _tg("getUpdates", offset=offset, timeout=30,
+                          allowed_updates=["callback_query"])
+        except Exception as exc:
+            print(f"getUpdates failed: {exc}", flush=True)
+            time.sleep(15)
+            continue
+        for update in updates:
+            offset = update.get("update_id", offset) + 1
+            if update.get("callback_query"):
+                _handle_callback(update["callback_query"])
+        if updates:
+            try:
+                with open(TG_OFFSET_PATH, "w") as fh:
+                    fh.write(str(offset))
+            except OSError:
+                pass
+
+
+@app.on_event("startup")
+def start_telegram_poller():
+    if tg_token():
+        threading.Thread(target=_poll_loop, daemon=True).start()
+    else:
+        print("telegram poller off: no bot token mounted", flush=True)
 
 
 @app.get("/settings")

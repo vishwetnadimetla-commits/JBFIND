@@ -146,8 +146,12 @@
       ],
       "parameters": {
         "chatId": "8511150256",
-        "text": "={{ \"JBFind \\u2014 \" + $json.data.length + \" new job\" + ($json.data.length === 1 ? \"\" : \"s\") + \"\\n\" + new Date().toISOString().slice(0, 16).replace(\"T\", \" \") + \" UTC\\n\\n\" + $json.data.slice(0, 10).map((j, i) => (i + 1) + \". \" + j.company + \" \\u2014 \" + j.title + \"\\n   Score \" + j.overall_score + \" | Skills \" + j.skill_match + \"% | \" + j.location + \"\\n   Posted: \" + (j.posted_date || (\"no date, first seen \" + String(j.discovered_date || \"\").slice(0, 10))) + (j.recommended ? \"  \\u2605 RECOMMENDED\" : \"\") + \"\\n   \" + j.why_this_job + \"\\n   \" + j.job_url).join(\"\\n\\n\") }}",
-        "additionalFields": {}
+        "text": "={{ \"JBFind \\u2014 \" + $json.data.length + \" new job\" + ($json.data.length === 1 ? \"\" : \"s\") + \"\\n\" + new Date().toLocaleString(\"en-IN\", {timeZone: \"Asia/Kolkata\", dateStyle: \"medium\", timeStyle: \"short\", hour12: false}) + \" IST\\n\\n\" + $json.data.slice(0, 10).map((j, i) => (i + 1) + \". \" + j.company + \" \\u2014 \" + j.title + \"\\n   Score \" + j.overall_score + \" | Skills \" + j.skill_match + \"% | \" + j.location + \"\\n   Posted: \" + (j.posted_date || (\"no date, first seen \" + String(j.discovered_date || \"\").slice(0, 10))) + (j.recommended ? \"  \\u2605 RECOMMENDED\" : \"\") + \"\\n   \" + j.why_this_job + \"\\n   \" + j.job_url).join(\"\\n\\n\") }}",
+        "additionalFields": {},
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": "={{ $json.data.slice(0, 10).map(j => ({row: {buttons: [{text: \"✅ Apply\", additionalFields: {callback_data: \"d:APPLY:\" + j.job_id}}, {text: \"❌ Reject\", additionalFields: {callback_data: \"d:REJECT:\" + j.job_id}}, {text: \"🚫 Not suitable\", additionalFields: {callback_data: \"d:NOT_SUITABLE:\" + j.job_id}}]}})) }}"
+        }
       },
       "credentials": {
         "telegramApi": {
@@ -208,7 +212,7 @@
     {
       "parameters": {
         "chatId": "8511150256",
-        "text": "={{ \"\u26a0\ufe0f JBFind pipeline FAILED\\n\\nWorkflow: \" + $json.workflow.name + \"\\nNode: \" + $json.execution.lastNodeExecuted + \"\\nMode: \" + $json.execution.mode + \"\\n\\n\" + $json.execution.error.message }}",
+        "text": "={{ \"⚠️ JBFind pipeline FAILED\\n\\nWorkflow: \" + $json.workflow.name + \"\\nNode: \" + $json.execution.lastNodeExecuted + \"\\nMode: \" + $json.execution.mode + \"\\n\\n\" + $json.execution.error.message }}",
         "additionalFields": {}
       },
       "credentials": {

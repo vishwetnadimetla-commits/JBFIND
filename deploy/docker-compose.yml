@@ -60,6 +60,8 @@ services:
       # settings.json (min_skill_match) lives here so dashboard edits survive
       # container recreation; the file is created on first PUT.
       - /opt/jbfind/data:/data
+      # bot token for the getUpdates poller behind the Telegram report buttons
+      - /home/ubuntu/.jbfind/secrets/telegram.env:/run/secrets/telegram.env:ro
     networks:
       - jbfind
 

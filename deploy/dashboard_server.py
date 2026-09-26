@@ -1,21 +1,28 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from datetime import datetime, timezone
 import json, mimetypes, os, urllib.parse, urllib.request
-import google.auth
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 SA_PATH = "/secrets/google-service-account.json"
 SHEET_ID = "1voOTzO8auKbgrP4J4dPACnwf9Tg2MsgUSCU9w2-mPFY"
+SHEET = "JOBS"
 PORT = 8080
 ALLOWED_EMAILS = {x.strip().lower() for x in os.getenv("JBFINDS_ALLOWED_EMAILS", "vishwet.nadimetla@gmail.com").split(",") if x.strip()}
-SHEET_RANGE = "JOBS!A1:V"
-HEADERS = [
-    "Job_ID", "Company", "Job_Title", "Location", "Experience_Status",
-    "Role_Match", "Skill_Match", "Tweak_Level", "Location_Match",
-    "Overall_Score", "Job_Source", "Job_URL", "Posted_Date", "Discovered_Date",
-    "Full_JD", "Recommended", "Why_This_Job", "Review_Required", "Last_Updated",
-    "Decision", "Decision_Reason", "Decision_Updated",
-]
+
+# The header row is owned by the scraper / reset script. The dashboard reads it
+# and never writes it, so adding a column upstream cannot corrupt the sheet here.
+DECISIONS = {"APPLY", "REJECT", "NOT_SUITABLE", "CLEAR"}
+REASON_TAGS = {
+    "NOT_SUITABLE": [
+        "missing_core_skill", "seniority_too_high", "seniority_too_low",
+        "title_mismatch", "not_mobile_domain", "outside_target_role",
+    ],
+    "REJECT": [
+        "compensation_below_target", "location_not_remote", "relocation_required",
+        "company_red_flags", "role_already_filled", "too_competitive",
+    ],
+}
 
 creds = service_account.Credentials.from_service_account_file(
     SA_PATH, scopes=["https://www.googleapis.com/auth/spreadsheets"]
@@ -23,83 +30,112 @@ creds = service_account.Credentials.from_service_account_file(
 sheets = build("sheets", "v4", credentials=creds)
 
 
+def col_letter(index):
+    """0-based column index -> spreadsheet column letter."""
+    index, out = index + 1, ""
+    while index:
+        index, rem = divmod(index - 1, 26)
+        out = chr(65 + rem) + out
+    return out
+
+
 def fetch_jobs():
-    try:
-        res = sheets.spreadsheets().values().get(
-            spreadsheetId=SHEET_ID, range=SHEET_RANGE
-        ).execute()
-        values = res.get("values", [])
-        headers = values[0] if values else []
-        rows = values[1:] if values else []
-        missing = [h for h in HEADERS if h not in headers]
-        if missing:
-            headers = headers + missing
-            sheets.spreadsheets().values().update(
-                spreadsheetId=SHEET_ID, range="JOBS!A1:V",
-                valueInputOption="RAW", body={"values": [HEADERS]},
-            ).execute()
-        rows = [row + [""] * (len(HEADERS) - len(row)) for row in rows]
-        return headers, rows
-    except Exception as e:
-        return [], [{"error": str(e)}]
+    res = sheets.spreadsheets().values().get(
+        spreadsheetId=SHEET_ID, range=f"{SHEET}!A:X"
+    ).execute()
+    values = res.get("values", [])
+    if not values:
+        return {"headers": [], "jobs": []}
+    headers = values[0]
+    width = len(headers)
+    jobs = [
+        {h: (row[i] if i < len(row) else "") for i, h in enumerate(headers)}
+        for row in values[1:]
+    ]
+    return {"headers": headers, "jobs": jobs}
 
 
 def update_decision(job_id, decision, reason=""):
-    headers, rows = fetch_jobs()
-    if not headers or "Job_ID" not in headers:
-        raise ValueError("JOBS sheet must contain a Job_ID header")
-    if decision not in {"APPLY", "NOT_SUITABLE", "REVIEW", "CLEAR"}:
+    if decision not in DECISIONS:
         raise ValueError("invalid decision")
-    try:
-        row_index = next(i for i, row in enumerate(rows, start=2) if row and row[0] == job_id)
-    except StopIteration:
+    reason = (reason or "").strip()
+    if decision in REASON_TAGS and not reason:
+        raise ValueError(f"{decision} requires a reason")
+    if len(reason) > 300:
+        raise ValueError("reason too long")
+
+    data = fetch_jobs()
+    headers, jobs = data["headers"], data["jobs"]
+    cols = {name: headers.index(name) for name in
+            ("Job_ID", "Decision", "Decision_Reason", "Decision_Updated")
+            if name in headers}
+    if len(cols) != 4:
+        raise ValueError("JOBS sheet is missing decision columns")
+
+    row_index = next(
+        (i for i, job in enumerate(jobs, start=2) if job.get("Job_ID") == job_id),
+        None,
+    )
+    if row_index is None:
         raise ValueError("job not found")
 
-    values = [[decision if decision != "CLEAR" else "", reason, "" if decision == "CLEAR" else __import__("datetime").datetime.utcnow().isoformat() + "Z"]]
+    first, last = col_letter(cols["Decision"]), col_letter(cols["Decision_Updated"])
+    values = [[
+        "" if decision == "CLEAR" else decision,
+        "" if decision == "CLEAR" else reason,
+        "" if decision == "CLEAR" else datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    ]]
     sheets.spreadsheets().values().update(
         spreadsheetId=SHEET_ID,
-        range=f"JOBS!T{row_index}:V{row_index}",
-        valueInputOption="USER_ENTERED",
+        range=f"{SHEET}!{first}{row_index}:{last}{row_index}",
+        valueInputOption="RAW",
         body={"values": values},
     ).execute()
+    return {"ok": True}
 
 
 def authenticated(handler):
     token = handler.headers.get("Authorization", "")
     if not token.startswith("Bearer "):
         return False
+    if not ALLOWED_EMAILS:
+        return False
+    try:
+        query = urllib.parse.urlencode({"id_token": token[7:]})
+        with urllib.request.urlopen(
+            "https://oauth2.googleapis.com/tokeninfo?" + query, timeout=5
+        ) as response:
+            email = json.loads(response.read()).get("email", "").lower()
+        return bool(email) and email in ALLOWED_EMAILS
+    except Exception:
+        return False
+
+
+def telegram_configured():
+    try:
+        with open("/run/secrets/telegram.env") as f:
+            for line in f:
+                if line.startswith("JB_FINDER_REPORTER_TOKEN="):
+                    return bool(line.split("=", 1)[1].strip())
+    except OSError:
+        pass
+    return False
 
 
 def operations():
-    result = {"n8n": {"status": "unknown"}, "schedule": "hourly at minute 00", "telegram": {"configured": False, "messages": []}}
+    # No getUpdates here: that conflicts with the n8n Telegram trigger polling
+    # the same bot and makes both sides fail. Bot status is a token-presence check.
+    result = {
+        "n8n": {"status": "unknown"},
+        "schedule": "every 30 minutes",
+        "telegram": {"configured": telegram_configured()},
+    }
     try:
         with urllib.request.urlopen("http://n8n:5678/healthz", timeout=3) as response:
             result["n8n"] = {"status": "healthy", "http": response.status}
     except Exception as exc:
         result["n8n"] = {"status": "offline", "error": str(exc)}
-    try:
-        values = {}
-        with open("/run/secrets/telegram.env") as f:
-            for line in f:
-                if "=" in line and not line.lstrip().startswith("#"):
-                    key, value = line.strip().split("=", 1)
-                    values[key] = value
-        token = values.get("JB_FINDER_REPORTER_TOKEN", "")
-        result["telegram"]["configured"] = bool(token)
-        if token:
-            with urllib.request.urlopen(f"https://api.telegram.org/bot{token}/getUpdates", timeout=5) as response:
-                updates = json.loads(response.read()).get("result", [])[-5:]
-            result["telegram"]["messages"] = [{"id": u.get("update_id"), "text": u.get("message", {}).get("text", ""), "date": u.get("message", {}).get("date")} for u in updates]
-    except Exception as exc:
-        result["telegram"]["error"] = str(exc)
     return result
-    try:
-        query = urllib.parse.urlencode({"id_token": token[7:]})
-        with urllib.request.urlopen("https://oauth2.googleapis.com/tokeninfo?" + query, timeout=5) as response:
-            email = json.loads(response.read()).get("email", "").lower()
-        return email in ALLOWED_EMAILS
-    except Exception:
-        return False
 
 
 def serve_asset(handler, relative):
@@ -116,8 +152,7 @@ class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json"):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
@@ -127,13 +162,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/", "/index.html"):
             with open("/dash/app/index.html", "rb") as f:
-                html = f.read()
-            self._send(200, html, "text/html")
+                self._send(200, f.read(), "text/html")
             return
 
         if self.path == "/config.js":
-            body = ("window.__JBFINDS_GOOGLE_CLIENT_ID__ = " + json.dumps(os.getenv("JBFINDS_GOOGLE_CLIENT_ID", "")) + ";\n"
-                    "window.__JBFINDS_ALLOWED_EMAILS__ = " + json.dumps(",".join(sorted(ALLOWED_EMAILS))) + ";\n").encode()
+            body = (
+                "window.__JBFINDS_GOOGLE_CLIENT_ID__ = "
+                + json.dumps(os.getenv("JBFINDS_GOOGLE_CLIENT_ID", ""))
+                + ";\nwindow.__JBFINDS_ALLOWED_EMAILS__ = "
+                + json.dumps(",".join(sorted(ALLOWED_EMAILS))) + ";\n"
+            ).encode()
             self._send(200, body, "application/javascript")
             return
 
@@ -141,22 +179,19 @@ class Handler(BaseHTTPRequestHandler):
             serve_asset(self, self.path)
             return
 
-        if self.path == "/api/jobs":
+        if self.path in ("/api/jobs", "/api/operations"):
             if not authenticated(self):
                 self._send(401, b'{"error":"authentication required"}')
                 return
-            headers, rows = fetch_jobs()
-            self._send(200, json.dumps({
-                "headers": headers,
-                "rows": [dict(zip(HEADERS, row)) for row in rows],
-            }).encode())
-            return
-
-        if self.path == "/api/operations":
-            if not authenticated(self):
-                self._send(401, b'{"error":"authentication required"}')
+            if self.path == "/api/operations":
+                self._send(200, json.dumps(operations()).encode())
                 return
-            self._send(200, json.dumps(operations()).encode())
+            try:
+                payload = fetch_jobs()
+                payload["reasonTags"] = REASON_TAGS
+                self._send(200, json.dumps(payload).encode())
+            except Exception as exc:
+                self._send(502, json.dumps({"error": str(exc)}).encode())
             return
 
         self._send(404, b'{"error":"not found"}')
@@ -169,18 +204,21 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b'{"error":"not found"}')
             return
         try:
-            job_id = self.path[len("/api/jobs/"):-len("/decision")]
+            job_id = urllib.parse.unquote(self.path[len("/api/jobs/"):-len("/decision")])
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length) or b"{}")
-            update_decision(job_id, payload.get("decision", ""), payload.get("reason", ""))
-            self._send(200, b'{"ok":true}')
-        except (ValueError, json.JSONDecodeError) as exc:
+            self._send(200, json.dumps(update_decision(
+                job_id, payload.get("decision", ""), payload.get("reason", "")
+            )).encode())
+        except ValueError as exc:
             self._send(400, json.dumps({"error": str(exc)}).encode())
+        except Exception as exc:
+            self._send(502, json.dumps({"error": str(exc)}).encode())
 
     def log_message(self, *args):
         pass
 
 
 if __name__ == "__main__":
-    print(f"JBFind dashboard: http://localhost:{PORT}")
+    print(f"JBFind dashboard: http://localhost:{PORT}", flush=True)
     HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

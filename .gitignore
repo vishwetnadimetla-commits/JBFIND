@@ -20,3 +20,14 @@ experiments.jsonl
 # Playwright MCP temp artifacts
 .playwright-mcp/
 tmp_resume/
+
+# Derived from Drive: master resume copy + tailored output (contains PII)
+.cache/
+out/
+
+# Ranking-experiment eval fixtures: local only, not pipeline setup
+test_jobs/real_prod*.json
+test_jobs/mobile_*.json
+test_jobs/chunk*.json
+test_jobs/full42_c*.json
+experiment.py

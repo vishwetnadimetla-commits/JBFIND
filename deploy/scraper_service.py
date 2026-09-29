@@ -8,6 +8,7 @@ import os
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 app = FastAPI(title="JBFind Scraper")
@@ -188,6 +189,74 @@ def scrape_naukri(search_term, count=20):
     return out
 
 
+def scrape_shine(search_term, count=20):
+    """Shine's public search JSON needs no browser, no auth, no cookies -- it
+    answers a plain GET (verified 200 from this host on 2026-09-30, ~12.9k
+    India jobs). Unlike the remote feeds it carries the full JD (jJD) and the
+    experience band (jExp), so it feeds the experience gate directly instead of
+    arriving as MISSING_DATA. location= is ignored by the API (same count for
+    every city), so results are all-India; 20 rows per page."""
+    out, page = [], 1
+    while len(out) < count and page <= 5:
+        url = ("https://www.shine.com/api/v2/search/simple/?q="
+               + urllib.parse.quote(search_term) + "&page=" + str(page))
+        # shine drops the TLS handshake intermittently (verified 2026-09-30:
+        # 100 jobs on 3 of 4 calls, 0 on the fourth). One blip used to return
+        # an empty list and the endpoint still answered 200, so 100 jobs
+        # vanished from the run with nothing but a line in the container log.
+        # only page 1 retries: the observed blip is a cold TLS handshake, and
+        # retrying all 5 pages would push a dead host to 5x3x25s of latency.
+        tries = 3 if page == 1 else 1
+        rows = None
+        for attempt in range(tries):
+            try:
+                req = urllib.request.Request(
+                    url, headers={"User-Agent": "Mozilla/5.0",
+                                  "Accept": "application/json"})
+                with urllib.request.urlopen(req, timeout=25) as resp:
+                    rows = (json.load(resp).get("results") or [])
+                break
+            except Exception as exc:
+                print(f"shine page {page} attempt {attempt + 1}/{tries} failed: {exc}",
+                      flush=True)
+                rows = None
+                time.sleep(2 * (attempt + 1))
+        if rows is None:
+            break
+        if not rows:
+            break
+        for job in rows:
+            title = text(job.get("jJT"))
+            locs = job.get("jLoc") or []
+            loc = ", ".join(text(x) for x in locs) if isinstance(locs, list) else text(locs)
+            kwd = text(job.get("jKwd"))
+            jd = text(job.get("jJD"))
+            if kwd:
+                jd = jd + " Skills: " + kwd
+            slug = text(job.get("jSlug"))
+            out.append({
+                "source": "shine",
+                "title": title,
+                "company": text(job.get("jCName") or job.get("jCD")),
+                "company_url": "",
+                "location": loc,
+                "country": "India",
+                "is_remote": "remote" in f"{title} {loc}".lower(),
+                "description": jd[:3000],
+                "url": f"https://www.shine.com/jobs/{slug}" if slug else "",
+                "date_posted": text(job.get("jPDate"))[:10],
+                "job_type": "",
+                "salary_min": 0,
+                "salary_max": 0,
+                "salary_currency": "",
+                "experience": text(job.get("jExp")),
+            })
+            if len(out) >= count:
+                break
+        page += 1
+    return out
+
+
 @app.get("/scrape")
 def scrape(
     q: str = Query(..., min_length=1),
@@ -201,6 +270,8 @@ def scrape(
     # one for it is 406 recaptcha from this host, so it never reaches scrape_jobs.
     naukri = scrape_naukri(q, count=min(count, 20)) if "naukri" in site_list else []
     site_list = [s for s in site_list if s != "naukri"]
+    shine = scrape_shine(q, count=count) if "shine" in site_list else []
+    site_list = [s for s in site_list if s != "shine"]
     jobs = scrape_jobs(
         site_name=site_list or ["indeed"],
         search_term=q,
@@ -231,6 +302,7 @@ def scrape(
             "experience": text(job.get("experience")),
         })
     result.extend(naukri)
+    result.extend(shine)
     return clean(result)
 
 
@@ -273,6 +345,70 @@ def sheets_upsert(job: dict):
     # Echo the job back so downstream nodes (aggregate, report) keep the ranked
     # fields instead of only the write result.
     return {**job, "sheet_action": action, "sheet_row": row_no}
+
+
+@app.post("/sheets/upsert_batch")
+def sheets_upsert_batch(payload: dict):
+    """Upsert many jobs in one n8n call.
+
+    n8n's HTTP node runs once per item, so a 32-job batch used to mean 32
+    sequential Google API calls: one slow call could trip the client timeout
+    and kill the whole run ("connection was aborted"). Here column A is read
+    once, existing rows go out in a single batchUpdate, and new rows in a
+    single append -- at most 3 Google calls for the whole batch.
+    """
+    if not SHEET_ID:
+        raise HTTPException(status_code=500, detail="JBFIND_SHEET_ID not set")
+    jobs = [j for j in (payload.get("jobs") or []) if j.get("job_id")]
+    if not jobs:
+        return {"results": [], "updated": 0}
+
+    index = _row_index()
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    updates, appends = [], []
+
+    for job in jobs:
+        job.setdefault("last_updated", stamp)
+        job.setdefault("company_url", "")
+        job["careers_url"] = job.get("careers_url") or careers_url(
+            job.get("company", ""), job.get("company_url", ""))
+        row = [_cell(job.get(f)) for f in FIELDS]
+        existing = index.get(str(job["job_id"]))
+        if existing:
+            rng = f"{SHEET_TAB}!A{existing}:{_col(len(FIELDS) - 1)}{existing}"
+            updates.append({"range": rng, "values": [row]})
+            job["sheet_action"] = "updated"
+        else:
+            appends.append((job, row))
+            job["sheet_action"] = "appended"
+
+    if updates:
+        # values:batchUpdate, NOT spreadsheets:batchUpdate -- the latter is the
+        # spreadsheet-metadata method and rejects data/valueInputOption with a
+        # 400 "Unknown name", which is what every batch write hit before.
+        _api("POST", f"{SHEETS_API}/{SHEET_ID}/values:batchUpdate",
+             {"valueInputOption": "RAW", "data": updates})
+        for job in jobs:
+            if job["sheet_action"] == "updated":
+                job["sheet_row"] = index[str(job["job_id"])]
+
+    if appends:
+        out = _api("POST", f"{SHEETS_API}/{SHEET_ID}/values/{SHEET_TAB}:append"
+                           f"?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+                   {"values": [r for _, r in appends]})
+        updated = out.get("updates", {}).get("updatedRange", "")
+        tail = "".join(c for c in updated.split(":")[-1] if c.isdigit())
+        if tail:
+            # updatedRange like "JOBS!A41:F72" -> last row 72, N appends -> start at 72-(N-1)
+            rows = int(tail) - (len(appends) - 1)
+            for offset, (job, _) in enumerate(appends):
+                job["sheet_row"] = rows + offset
+                _index["rows"][str(job["job_id"])] = rows + offset
+        else:
+            for job, _ in appends:
+                job["sheet_row"] = 0
+
+    return {"results": jobs, "updated": len(jobs)}
 
 
 DECISIONS = {"APPLY", "REJECT", "NOT_SUITABLE", "CLEAR"}
@@ -347,9 +483,72 @@ def _answer(callback_id, text):
         print(f"answerCallbackQuery failed: {exc}", flush=True)
 
 
+MASTER_RESUME_URL = "https://drive.google.com/drive/u/1/folders/1akSo3dFO2h256ejSTxI34CRDHGwnLpoh"
+
+
+def _send(chat_id, text):
+    try:
+        _tg("sendMessage", chat_id=chat_id, text=text)
+    except Exception as exc:
+        print(f"sendMessage failed: {exc}", flush=True)
+
+
+def _job_row(job_id):
+    """Full sheet row as a header-keyed dict, or None when missing."""
+    header = _api("GET", f"{SHEETS_API}/{SHEET_ID}/values/{SHEET_TAB}!A1:{_col(len(FIELDS) - 1)}1"
+                         "?majorDimension=ROWS").get("values", [[]])[0]
+    row_no = _row_index().get(str(job_id))
+    if not row_no:
+        return None
+    rng = f"{SHEET_TAB}!A{row_no}:{_col(len(FIELDS) - 1)}{row_no}"
+    vals = _api("GET", f"{SHEETS_API}/{SHEET_ID}/values/{rng}?majorDimension=ROWS").get("values", [[]])[0]
+    return dict(zip(header, vals))
+
+
+def _score_text(job):
+    def yn(v):
+        s = str(v or "").upper()
+        return "yes" if s == "TRUE" else ("no" if s == "FALSE" else (str(v) or "—"))
+    lines = [
+        f"\U0001f4ca Score basis — {job.get('Company', '?')} — {job.get('Title', '?')}",
+        f"Role {job.get('Role_Match', '—')} · Skills {job.get('Skill_Match', '—')} · "
+        f"Location {job.get('Location_Match', '—')} · Tweaks {job.get('Tweak_Level', '—')} · "
+        f"Overall {job.get('Overall_Score', '—')}",
+        f"Recommended: {yn(job.get('Recommended'))} · "
+        f"Experience: {job.get('Experience_Status', '—')} · "
+        f"Review: {yn(job.get('Review_Required'))}",
+    ]
+    why = (job.get("Why_This_Job") or "").strip()
+    if why:
+        lines.append(f"Why: {why[:800]}")
+    return "\n".join(lines)
+
+
+def _resume_text(job):
+    try:
+        tweak = int(float(job.get("Tweak_Level") or 0))
+    except (TypeError, ValueError):
+        tweak = 0
+    head = f"\U0001f4c4 Resume — {job.get('Company', '?')} — {job.get('Title', '?')}\n"
+    if tweak <= 20:
+        return head + f"100% — master resume, no changes needed.\n{MASTER_RESUME_URL}"
+    return head + (f"Tailored version needed (tweak effort {tweak}/100) — not generated yet.\n"
+                   f"Master meanwhile: {MASTER_RESUME_URL}")
+
+
 def _handle_callback(cq):
-    parts = str(cq.get("data") or "").split(":", 2)
+    data = str(cq.get("data") or "")
     callback_id = cq.get("id", "")
+    parts = data.split(":", 2)
+    if parts[0] in ("s", "r") and len(parts) == 2:
+        job = _job_row(parts[1])
+        if job is None:
+            _answer(callback_id, "Job not found.")
+            return
+        _answer(callback_id, "Sending details…")
+        chat_id = ((cq.get("message") or {}).get("chat") or {}).get("id")
+        _send(chat_id, _score_text(job) if parts[0] == "s" else _resume_text(job))
+        return
     if len(parts) != 3 or parts[0] != "d":
         _answer(callback_id, "Unknown button.")
         return
@@ -462,19 +661,43 @@ def _token():
     return creds.token
 
 
-def _api(method, url, payload=None):
+_API_RETRY_STATUS = (429, 500, 502, 503, 504)
+
+
+def _api(method, url, payload=None, tries=4):
+    """One Google Sheets call, with retry.
+
+    The 30-min workflow calls /sheets/upsert once per job, so a single
+    dropped connection to Google used to abort the whole run -- n8n saw a 500
+    and posted "connection was aborted". Google rate-limits and resets
+    sockets routinely, so retry the transient ones here where we can tell
+    them apart, and let a real 4xx through immediately."""
     data = json.dumps(payload).encode() if payload is not None else None
-    req = urllib.request.Request(url, data=data, method=method, headers={
-        "Authorization": "Bearer " + _token(),
-        "Content-Type": "application/json",
-    })
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            body = resp.read().decode()
-        return json.loads(body) if body else {}
-    except urllib.error.HTTPError as exc:
-        raise HTTPException(status_code=exc.code,
-                            detail=exc.read().decode()[:500])
+    last = None
+    for attempt in range(tries):
+        req = urllib.request.Request(url, data=data, method=method, headers={
+            "Authorization": "Bearer " + _token(),
+            "Content-Type": "application/json",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                body = resp.read().decode()
+            return json.loads(body) if body else {}
+        except urllib.error.HTTPError as exc:
+            if exc.code in _API_RETRY_STATUS and attempt < tries - 1:
+                time.sleep(2 * (attempt + 1))
+                last = exc
+                continue
+            raise HTTPException(status_code=exc.code,
+                                detail=exc.read().decode()[:500])
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
+            # reset/aborted socket, DNS blip, timeout: never fatal on its own
+            if attempt < tries - 1:
+                time.sleep(2 * (attempt + 1))
+                last = exc
+                continue
+            raise HTTPException(status_code=503, detail=f"google unreachable: {exc}")
+    raise HTTPException(status_code=503, detail=f"google unreachable: {last}")
 
 
 def _row_index():

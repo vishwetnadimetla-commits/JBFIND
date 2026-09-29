@@ -10,6 +10,12 @@ SHEET = "JOBS"
 PORT = 8080
 ALLOWED_EMAILS = {x.strip().lower() for x in os.getenv("JBFINDS_ALLOWED_EMAILS", "vishwet.nadimetla@gmail.com").split(",") if x.strip()}
 
+# Tailored resumes land in Drive as 01_TAILORED_RESUMES/<date>_<company>/.
+# DRIVE_PARENT is the "Vishwet" folder that holds MASTER RESUME.
+DRIVE_PARENT = "1S9aMzkWeAKDqkprkpzgMavC-rTmUwPMJ"
+TAILORED_ROOT = "01_TAILORED_RESUMES"
+FOLDER_MIME = "application/vnd.google-apps.folder"
+
 # The header row is owned by the scraper / reset script. The dashboard reads it
 # and never writes it, so adding a column upstream cannot corrupt the sheet here.
 DECISIONS = {"APPLY", "REJECT", "NOT_SUITABLE", "CLEAR"}
@@ -28,6 +34,51 @@ creds = service_account.Credentials.from_service_account_file(
     SA_PATH, scopes=["https://www.googleapis.com/auth/spreadsheets"]
 )
 sheets = build("sheets", "v4", credentials=creds)
+drive = build("drive", "v3", credentials=service_account.Credentials.from_service_account_file(
+    SA_PATH, scopes=["https://www.googleapis.com/auth/drive"]))
+
+
+def tailored_resumes(limit=30):
+    """Generated resumes from 01_TAILORED_RESUMES, newest folder first.
+
+    Each entry is a Drive folder holding the DOCX, the tailored markdown and the
+    change log written by tools/resume_tailor.py.
+    """
+    def child(parent, name, folder=False):
+        q = f"'{parent}' in parents and name = '{name}' and trashed = false"
+        if folder:
+            q += f" and mimeType = '{FOLDER_MIME}'"
+        found = drive.files().list(q=q, fields="files(id)").execute().get("files", [])
+        return found[0]["id"] if found else None
+
+    root = child(DRIVE_PARENT, TAILORED_ROOT, folder=True)
+    if not root:
+        return {"resumes": []}
+
+    folders = drive.files().list(
+        q=f"'{root}' in parents and mimeType = '{FOLDER_MIME}' and trashed = false",
+        fields="files(id,name)", orderBy="name desc", pageSize=limit).execute().get("files", [])
+    out = []
+    for f in folders:
+        files = drive.files().list(
+            q=f"'{f['id']}' in parents and trashed = false",
+            fields="files(id,name,mimeType,webViewLink)").execute().get("files", [])
+        entry = {"folder": f["id"], "version": f["name"],
+                 "url": f"https://drive.google.com/drive/folders/{f['id']}", "files": {}}
+        for item in files:
+            entry["files"][item["name"]] = item.get("webViewLink", "")
+            if item["name"] == "changes.json":
+                try:
+                    changes = json.loads(drive.files().get_media(
+                        fileId=item["id"]).execute().decode())
+                    entry.update({k: changes.get(k) for k in
+                                  ("company", "title", "job_id", "tweak_level",
+                                   "created_date", "review_status", "factuality_check",
+                                   "template_fidelity", "summary_rewritten")})
+                except Exception:
+                    pass
+        out.append(entry)
+    return {"resumes": out}
 
 
 def col_letter(index):
@@ -200,6 +251,16 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 self._send(200, json.dumps(settings_proxy("GET")).encode())
+            except Exception as exc:
+                self._send(502, json.dumps({"error": str(exc)}).encode())
+            return
+
+        if self.path == "/api/resume":
+            if not authenticated(self):
+                self._send(401, b'{"error":"authentication required"}')
+                return
+            try:
+                self._send(200, json.dumps(tailored_resumes()).encode())
             except Exception as exc:
                 self._send(502, json.dumps({"error": str(exc)}).encode())
             return

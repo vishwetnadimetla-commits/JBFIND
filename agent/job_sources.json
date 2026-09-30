@@ -4,8 +4,8 @@
     "endpoint": "http://scraper:8001/scrape",
     "sites": ["indeed", "linkedin", "naukri", "google"],
     "params": {
-      "q": "network engineer",
-      "location": "Bangalore, India",
+      "q": "mobile application developer",
+      "location": "India (Hyderabad, Bengaluru, Mumbai, Pune)",
       "count": 100
     }
   },

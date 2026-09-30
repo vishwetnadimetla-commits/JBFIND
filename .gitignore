@@ -11,6 +11,7 @@ __pycache__/
 *.pyc
 
 # SSH keys for Oracle VM — never commit
+keys/
 *.pem
 *.key
 
@@ -18,3 +19,24 @@ __pycache__/
 experiments.jsonl
 # Playwright MCP temp artifacts
 .playwright-mcp/
+tmp_resume/
+
+# Derived from Drive: master resume copy + tailored output (contains PII)
+.cache/
+out/
+
+# Ranking-experiment eval fixtures: local only, not pipeline setup
+test_jobs/real_prod*.json
+test_jobs/mobile_*.json
+test_jobs/chunk*.json
+test_jobs/full42_c*.json
+experiment.py
+
+# Agent/planning workspace: local only, never pipeline setup
+.opencode/
+
+# test_jobs/ is a research scratch dir. sample_*.json are historical and
+# stay tracked so old commits keep resolving; everything else is local.
+test_jobs/*
+!test_jobs/sample_cisco.json
+!test_jobs/sample_google.json

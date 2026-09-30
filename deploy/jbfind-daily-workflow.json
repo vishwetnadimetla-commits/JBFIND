@@ -3,17 +3,20 @@
   "nodes": [
     {
       "id": "cron-trigger",
-      "name": "Daily 6am Trigger",
+      "name": "30-Min Trigger",
       "type": "n8n-nodes-base.cron",
       "typeVersion": 1,
-      "position": [250, 300],
+      "position": [
+        250,
+        300
+      ],
       "parameters": {
         "triggerTimes": {
           "item": [
             {
-              "mode": "everyDay",
-              "hour": 6,
-              "minute": 0
+              "mode": "everyX",
+              "value": 30,
+              "unit": "minutes"
             }
           ]
         }
@@ -24,22 +27,13 @@
       "name": "JobSpy Scrape",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [450, 200],
+      "position": [
+        450,
+        200
+      ],
       "parameters": {
         "method": "GET",
-        "url": "http://scraper:8001/scrape?q=network+engineer&location=Bangalore%2C+India&sites=indeed%2Clinkedin%2Cnaukri%2Cgoogle&count=100",
-        "options": {}
-      }
-    },
-    {
-      "id": "scrape-remote-ok",
-      "name": "RemoteOK API",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [450, 400],
-      "parameters": {
-        "method": "GET",
-        "url": "https://remoteok.com/api?tag=network",
+        "url": "http://scraper:8001/scrape?q=mobile+application+developer&location=India&sites=indeed%2Clinkedin%2Cnaukri%2Cshine&count=100&hours_old=24",
         "options": {}
       }
     },
@@ -48,7 +42,10 @@
       "name": "Remotive API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [450, 600],
+      "position": [
+        450,
+        600
+      ],
       "parameters": {
         "method": "GET",
         "url": "https://remotive.com/api/remote-jobs?category=software-dev&limit=50",
@@ -60,9 +57,13 @@
       "name": "Merge All Sources",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 2,
-      "position": [700, 300],
+      "position": [
+        700,
+        300
+      ],
       "parameters": {
-        "mode": "mergeByPosition"
+        "mode": "append",
+        "options": {}
       }
     },
     {
@@ -70,10 +71,12 @@
       "name": "Normalize + Dedupe",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 300],
+      "position": [
+        900,
+        300
+      ],
       "parameters": {
-        "language": "python",
-        "code": "import json\n\nitems = {{$json}}\nif isinstance(items, dict):\n    items = items.get('jobs', items.get('results', items.get('data', [items])))\nif not isinstance(items, list):\n    items = [items] if items else []\n\nseen_urls = set()\nseen_keys = set()\nnormalized = []\n\n# Remotive wraps results in 'jobs' key\nif items and isinstance(items[0], dict) and 'jobs' in items[0]:\n    items = items[0]['jobs']\n\nfor job in items:\n    company = job.get('company_name') or job.get('company') or job.get('author') or ''\n    title = job.get('title') or job.get('job_title') or ''\n    location = job.get('city') or job.get('location') or ''\n    url = job.get('url') or job.get('job_url') or ''\n    jd = job.get('description') or job.get('body') or ''\n    source = job.get('source', job.get('site', 'scraped'))\n    posted = job.get('date_posted') or job.get('pubDate') or job.get('date') or ''\n\n    norm_url = url.strip().lower().rstrip('/')\n    if norm_url and norm_url in seen_urls:\n        continue\n    if norm_url:\n        seen_urls.add(norm_url)\n\n    key = f\"{company.lower().strip()}|{title.lower().strip()}|{location.lower().strip()}\"\n    if key in seen_keys:\n        continue\n    seen_keys.add(key)\n\n    normalized.append({\n        'company': company,\n        'title': title,\n        'location': location,\n        'experience': '',\n        'job_url': url,\n        'jd': jd,\n        'source': source,\n        'posted_date': posted,\n        'discovered_date': '{{$now.toISOString()}}'\n    })\n\nreturn normalized\n"
+        "jsCode": "\nconst LIST_KEYS = ['jobs', 'results', 'data', 'items', 'posts'];\nconst raw = $input.all().map(i => i.json);\nconst list = [];\nfor (const r of raw) {\n  if (Array.isArray(r)) list.push(...r);\n  else if (r && typeof r === 'object') {\n    const k = LIST_KEYS.find(k => Array.isArray(r[k]));\n    if (k) list.push(...r[k]);\n    else list.push(r);\n  } else if (r !== null && r !== undefined) list.push(r);\n}\n\nconst pick = (...v) => v.find(x => x !== undefined && x !== null && x !== '') || '';\nconst hash = s => {\n  let h = 0x811c9dc5;\n  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }\n  return (h >>> 0).toString(16).padStart(8, '0');\n};\n\n// ponytail: this node is re-invoked once per input branch, because n8n\n// re-triggers everything downstream of a multi-input Merge. Per-invocation\n// state therefore handed every source its own LLM_BUDGET (32 jobs reached\n// the LLM instead of 8) and let cross-source duplicates through, since the\n// dedupe sets were rebuilt from scratch on every branch.\n// $getWorkflowStaticData is the only state that survives between\n// invocations of the same execution; the execId check throws it away at the\n// start of the next run so a stale run cannot poison the next one.\nconst store = $getWorkflowStaticData('global');\nif (store.execId !== $execution.id) {\n  store.execId = $execution.id;\n  store.urls = Object.create(null);\n  store.keys = Object.create(null);\n  store.emitted = 0;\n}\nconst seenUrls = new Set(Object.keys(store.urls));\nconst seenKeys = new Set(Object.keys(store.keys));\nconst out = [];\nfor (const job of list) {\n  if (!job || typeof job !== 'object') continue;\n  const company  = pick(job.company_name, job.companyName, job.company, job.author);\n  const title    = pick(job.title, job.jobTitle, job.job_title, job.position);\n  const location = pick(job.city, job.location, job.jobGeo, job.candidate_required_location,\n                     Array.isArray(job.locationRestrictions) ? job.locationRestrictions.join(', ') : '');\n  if (!company && !title) continue;\n  const url    = pick(job.url, job.job_url, job.apply_url, job.applicationLink, job.guid);\n  // ponytail: cap the JD. RemoteOK sends multi-KB HTML blobs and ollama runs\n  // at ~14 tok/s prompt eval on CPU, so an uncapped JD turns a 5 min run into\n  // an hour. 1800 chars is plenty of signal for skills + responsibilities.\n  const rawJd  = pick(job.description, job.jobDescription, job.body, job.job_description);\n  const jd     = String(rawJd || '').replace(/<[^>]*>/g, ' ')\n                      .replace(/\\s+/g, ' ').trim().slice(0, 1800);\n  // remotive/remoteok/himalayas/arbeitnow have no source field, so every row\n  // used to land as \"scraped\"; derive it from the posting host instead.\n  const source = job.source || job.site\n    || (String(url).match(/^https?:\\/\\/([^/]+)/)?.[1] || '').replace(/^www\\./, '')\n    || 'scraped';\n  const posted = (() => {\n    const v = pick(job.date_posted, job.publication_date, job.pubDate,\n                   job.publishedAt, job.date, job.created_at);\n    if (v === '') return '';\n    if (typeof v === 'number' || /^\\d{9,13}$/.test(String(v))) {\n      const d = new Date(String(v).length > 10 ? Number(v) : Number(v) * 1000);\n      return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);\n    }\n    return String(v).slice(0, 10);\n  })();\n\n  const normUrl = String(url).trim().toLowerCase().replace(/\\/+$/, '');\n  if (normUrl && seenUrls.has(normUrl)) continue;\n  if (normUrl) { seenUrls.add(normUrl); store.urls[normUrl] = 1; }\n  const key = `${company.toLowerCase().trim()}|${title.toLowerCase().trim()}|${location.toLowerCase().trim()}`;\n  if (seenKeys.has(key)) continue;\n  seenKeys.add(key); store.keys[key] = 1;\n\n  out.push({\n    job_id: hash(normUrl || key),\n    company, title, location,\n    company_url: pick(job.company_url, job.employer_url),\n    experience: '',\n    job_url: url,\n    jd: String(jd).slice(0, 4000),\n    source,\n    posted_date: posted,\n    discovered_date: new Date().toISOString()\n  });\n}\n\n// ponytail: LLM is 60s/call on CPU, so prefilter + cap before spending LLM time.\n// Word boundaries matter: the bare word SWIFT matches the SWIFT payments\n// network in banking ads, which is how a Fireblocks sales job passed a filter\n// looking for Swift/iOS developers. NEG drops whole non-tech categories that\n// these boards are full of (a psychologist, a sales engineer, a content\n// creator all reached the LLM in real runs).\nconst NEG = /(psycholog|therap|sales engineer|account (manager|director)|recruit|marketing|customer success|graphic design|content creator|teacher|professor|nurse|legal counsel|accountant)/i;\nconst MOBILE = /(\\bflutter\\b|\\bandroid\\b|\\bios\\b|\\biphone\\b|\\bswift\\b|\\bkotlin\\b|mobile app|react native|\\bdart\\b|jetpack|\\bmvvm\\b|\\bmvp\\b|firebase|app development|app store|google play|android studio|\\bxcode\\b)/i;\nconst STRONG = /(\\bflutter\\b|\\bandroid\\b|\\bios\\b|\\biphone\\b|\\bswift\\b|\\bkotlin\\b|react native|mobile app)/i;\n// 3 = the title itself says mobile. Measured over 546 live postings: 3 mobile\n// titles in the API sources against 7/7 from naukri, so a slot spent on a\n// board that never returns a mobile role is a slot wasted.\nfor (const j of out) {\n  const t = j.title || '';\n  j._rel = NEG.test(t) ? 0 : (STRONG.test(t) ? 3 : (MOBILE.test(t + ' ' + j.jd) ? 1 : 0));\n}\nconst relevant = out.filter(j => j._rel > 0).sort((a, b) => b._rel - a._rel);\n// ponytail: 8, not 12. ollama runs ~127s per job on a capped prompt\n  // (~550 token prompt at 14 tok/s eval + 500 max_tokens at 5.75 tok/s gen),\n  // so 12 would take ~25-38 min and overrun the 30-min cron.\nconst LLM_BUDGET = 8;\n// Whatever earlier branches already spent. The first branch to deliver\n// relevant jobs takes the budget, which is the intended outcome now that the\n// three measured-dead boards are gone and naukri (7/7 mobile) is first.\nconst remaining = Math.max(0, LLM_BUDGET - (store.emitted || 0));\nif (!remaining) return [];\nconst ranked = relevant.length ? relevant : out;\n// Round-robin the budget across hosts, but only across hosts that have\n// actually produced a mobile-titled job. Round-robin over every host spent\n// 3 of 8 slots on EU boards yielding 0.31% mobile roles; restricting it to\n// strong-title hosts took a run from 5/8 to 8/8 mobile jobs.\nconst strongHosts = new Set(out.filter(j => j._rel >= 3).map(j => j.source));\nconst byHost = new Map();\nfor (const j of ranked) {\n  // a host with no strong job is only used once every strong host is spent\n  const key = strongHosts.has(j.source) ? j.source : '~' + j.source;\n  if (!byHost.has(key)) byHost.set(key, []);\n  byHost.get(key).push(j);\n}\nconst strongList = [...byHost.entries()].filter(([k]) => !k.startsWith('~')).map(([, v]) => v);\nconst weakList = [...byHost.entries()].filter(([k]) => k.startsWith('~')).flatMap(([, v]) => v);\nconst byHostOrdered = [...new Map([...strongList, ...weakList].map((v) => [v[0], v])).values()];\nconst keep = [];\nfor (let i = 0; keep.length < remaining; i++) {\n  let added = false;\n  for (const list of byHostOrdered) {\n    if (i < list.length) { keep.push(list[i]); added = true; }\n    if (keep.length >= remaining) break;\n  }\n  if (!added) break;\n}\nfor (const j of keep) delete j._rel;\nstore.emitted = (store.emitted || 0) + keep.length;\nreturn keep;\n"
       }
     },
     {
@@ -81,97 +84,418 @@
       "name": "LLM Analyze Batch",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1100, 300],
+      "position": [
+        1100,
+        300
+      ],
       "parameters": {
         "method": "POST",
-        "url": "https://api.experientiallabs.ai/v1/chat/completions",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "url": "=http://ollama:11434/v1/chat/completions",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {"name": "model", "value": "deepseek-v4-flash"},
-            {"name": "messages[0][role]", "value": "system"},
-            {"name": "messages[0][content]", "value": "=You are a job analyst for a network engineer with 4 years experience. Analyze the job listing below. Return valid JSON only with: experience_status (PASS/REJECT/REVIEW/MISSING_DATA), experience_reason, role_match (0-100), skill_match (0-100), location_match (0-100), tweak_level (0-100), overall_score (0-100), matched_skills (array), missing_skills (array), recommended (bool), why_this_job. Rules: 4 years candidate. PASS if range accepts 4, REJECT if clearly exceeds 4. Never fabricate skills."},
-            {"name": "messages[1][role]", "value": "user"},
-            {"name": "messages[1][content]", "value": "={{$json | toJSON()}}"},
-            {"name": "max_tokens", "value": 500},
-            {"name": "temperature", "value": 0.1}
-          ]
-        }
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: 'qwen2.5:7b',\n  messages: [\n    { role: 'system', content: \"You are a job analyst for Vishwet, a mobile application developer with 3+ years of experience. The master resume covers Flutter, Native Android Kotlin/Java, iOS Swift, Jetpack Compose, MVVM/MVP, REST APIs, Firebase, payments, BLE, RFID, testing, and mobile app delivery. Analyze the job listing and return valid JSON only with: experience_status (PASS/REJECT/REVIEW/MISSING_DATA), experience_reason, role_match (0-100), skill_match (0-100), location_match (0-100), tweak_level (0-100), overall_score (0-100), matched_skills (array), missing_skills (array), recommended (bool), why_this_job. The job ad states the minimum experience the employer will ACCEPT, not a bar the candidate has to clear. Decide on the LOW number of the stated range. Minimum 0-3 years is a PASS because the employer accepts a 3-year candidate. Minimum exactly 4 years is REVIEW. Minimum 5 years or more is REJECT. If the ad states no experience at all, set MISSING_DATA and do not reject for experience - let role and skill decide. Never reject because the stated minimum is too low, and never reject on senior/lead words in the title.. Score role_match and skill_match on the role and the skills ONLY, judged independently of the experience requirement: never set them to 0 because you think the experience is too low or too high, since the experience gate is decided separately in code.  Never fabricate skills or experience and do not classify unrelated network-engineering jobs as a match. Location policy: onsite and hybrid roles based in India (Bengaluru, Hyderabad, Mumbai, Pune, Chennai, Delhi NCR) are the first choice; fully remote roles are acceptable from any country; onsite roles outside India get location_match below 30. Reject outright any role that is not mobile app development - sales, marketing, graphic design, customer success, recruiting, manual QA only, backend only or full stack only - with experience_status REJECT, role_match 0 and skill_match 0, because only skill_match 60 and above is ever reported.\" },\n    { role: 'user', content: JSON.stringify($json) }\n  ],\n  max_tokens: 500,\n  temperature: 0.1\n}) }}",
+        "options": {
+          "timeout": 1200000
+        },
+        "batchSize": 1,
+        "batchInterval": 1000
       },
-      "credentials": {
-        "httpHeaderAuth": {"id": "experiential-labs", "name": "Experiential Labs"}
-      }
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 30000
     },
     {
       "id": "code-score",
       "name": "Parse Scores + Rank",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1300, 300],
+      "position": [
+        1300,
+        300
+      ],
       "parameters": {
-        "language": "python",
-        "code": "import json\n\nitems = {{$json}}\nresults = []\n\nfor item in items:\n    analysis_text = item.get('choices', [{}])[0].get('message', {}).get('content', '{}')\n    try:\n        analysis = json.loads(analysis_text)\n    except:\n        analysis = {}\n\n    if analysis.get('experience_status') == 'REJECT':\n        analysis['overall_score'] = -1\n        analysis['recommended'] = False\n\n    results.append({\n        'company': item.get('company', ''),\n        'title': item.get('title', ''),\n        'location': item.get('location', ''),\n        'job_url': item.get('job_url', ''),\n        'experience': '',\n        'experience_status': analysis.get('experience_status', 'MISSING_DATA'),\n        'experience_reason': analysis.get('experience_reason', ''),\n        'role_match': analysis.get('role_match', 0),\n        'skill_match': analysis.get('skill_match', 0),\n        'location_match': analysis.get('location_match', 50),\n        'tweak_level': analysis.get('tweak_level', 50),\n        'overall_score': analysis.get('overall_score', 0),\n        'recommended': analysis.get('recommended', False),\n        'why_this_job': analysis.get('why_this_job', ''),\n        'matched_skills': analysis.get('matched_skills', []),\n        'missing_skills': analysis.get('missing_skills', []),\n        'review_required': analysis.get('review_required', False)\n    })\n\npassing = [r for r in results if r.get('experience_status') == 'PASS']\nothers = [r for r in results if r.get('experience_status') != 'PASS']\npassing.sort(key=lambda r: (-r.get('overall_score', 0), r.get('tweak_level', 0), -r.get('skill_match', 0)))\n\nsorted_results = passing + others\nreturn sorted_results[:100]\n"
+        "jsCode": "\n// The LLM node is an httpRequest, so its output replaces the input item and all\n// job fields are gone. The HTTP Request node runs items in order, so zip back\n// against the Normalize node's output by index to recover company/title/url.\nconst src = $('Normalize + Dedupe').all();\nconst results = [];\n\n$input.all().forEach((it, i) => {\n  const j = it.json || {};\n  const base = (src[i] && src[i].json) || {};\n  let raw = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '{}';\n  raw = String(raw).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();\n  let a = {};\n  try { a = JSON.parse(raw); } catch (e) { a = {}; }\n\n  // Deterministic experience gate. A job ad states the minimum the employer\n  // will ACCEPT, not a bar the candidate has to clear, so decide on the LOW\n  // number of the range: \"0-3 years\" accepts a 3-year candidate. The 7b model\n  // was reading the same rule inverted and discarding 4 of 100 real jobs.\n  // `experience` is empty on every real posting, so parse the JD text.\n  const blob = String(base.jd || '').slice(0, 2000);\n  const ym = blob.match(/(\\d{1,2})\\s*(?:-|to|\\u2013|\\u2014)\\s*(\\d{1,2})\\s*(?:years?|yrs?)|\\b(\\d{1,2})\\s*\\+?\\s*(?:years?|yrs?)\\b/i);\n  let gate;\n  if (ym) {\n    const lo = parseInt(ym[1] || ym[3], 10);\n    gate = lo > 4 ? 'REJECT' : (lo > 3 ? 'REVIEW' : 'PASS');\n  } else {\n    // No stated experience is not a disqualifier - 92% of real postings say\n    // nothing. A senior/lead title is not evidence either; the candidate is\n    // himself a Lead Mobile App Developer.\n    gate = 'MISSING_DATA';\n  }\n  if (gate === 'REJECT') { a.overall_score = -1; }\n\n  const num = (v) => Math.max(0, Math.min(100, Number(v) || 0));\n  const role = num(a.role_match), skill = num(a.skill_match), loc = num(a.location_match);\n  // `recommended` had no rule at all, so the model guessed (a job scoring 85\n  // came back false). Location counts: a posting in France is not actionable\n  // for a candidate based in Pune.\n  const recommended = gate !== 'REJECT' && role >= 50 && skill >= 60 && loc >= 30;\n\n  results.push({\n    job_id: base.job_id || '',\n    company: base.company || '',\n    source: base.source || '',\n    jd: base.jd || '',\n    posted_date: base.posted_date || '',\n    discovered_date: base.discovered_date || new Date().toISOString(),\n    last_updated: new Date().toISOString(),\n    title: base.title || '',\n    location: base.location || '',\n    company_url: base.company_url || '',\n    job_url: base.job_url || '',\n    experience: '',\n    experience_status: gate,\n    experience_reason: a.experience_reason || '',\n    role_match: a.role_match || 0,\n    skill_match: a.skill_match || 0,\n    location_match: a.location_match ?? 50,\n    tweak_level: a.tweak_level || 50,\n    overall_score: a.overall_score || 0,\n    recommended: recommended,\n    why_this_job: a.why_this_job || '',\n    matched_skills: a.matched_skills || [],\n    missing_skills: a.missing_skills || [],\n    review_required: gate === 'REVIEW'\n  });\n});\n\nconst pass = results.filter(r => r.experience_status === 'PASS');\nconst other = results.filter(r => r.experience_status !== 'PASS');\npass.sort((a, b) =>\n  ((b.overall_score || 0) - (a.overall_score || 0))\n  || ((a.tweak_level || 0) - (b.tweak_level || 0))\n  || ((b.skill_match || 0) - (a.skill_match || 0))\n);\nreturn pass.concat(other).slice(0, 100);\n"
       }
     },
     {
       "id": "sheets-write",
       "name": "Sheets Write Jobs",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4,
-      "position": [1500, 300],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1500,
+        300
+      ],
       "parameters": {
-        "operation": "appendOrUpdate",
-        "documentId": "1voOTzO8auKbgrP4J4dPACnwf9Tg2MsgUSCU9w2-mPFY",
-        "sheetName": "JOBS",
-        "columns": {
-          "mappingMode": "defineBelow",
-          "value": "Job_ID,Company,Job_Title,Location,Experience_Status,Role_Match,Skill_Match,Tweak_Level,Location_Match,Overall_Score,Job_Source,Job_URL,Posted_Date,Discovered_Date,Full_JD,Recommended,Why_This_Job,Review_Required,Last_Updated"
-        },
-        "options": {}
+        "method": "POST",
+        "url": "http://scraper:8001/sheets/upsert",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 120000
+        }
       },
-      "credentials": {
-        "googleSheets": {"id": "google", "name": "Google Sheets"}
-      }
-    },
-    {
-      "id": "send-telegram",
-      "name": "Send Telegram Report",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1,
-      "position": [1700, 300],
-      "parameters": {
-        "chatId": "{{$parameter.chatId}}",
-        "text": "=*JBFind Daily Report*\n{{$now.format('DD MMM YYYY')}}\n\n*Recommended for You:*\n{{#each $json}}\n{{#if recommended}}\n{{@index}}. *{{company}}* — {{title}}\n   📍 {{location}} | Score: {{overall_score}}\n   Skills: {{skill_match}}% | Why: {{why_this_job}}\n   [Apply]({{job_url}})\n\n{{/if}}\n{{/each}}\n✅ *Total:* {{$json.filter(j => j.recommended).length}} recommended"
-      },
-      "credentials": {
-        "telegramApi": {"id": "jbfind-reporter", "name": "JBFind Reporter Bot"}
-      }
+      "retryOnFail": true,
+      "maxTries": 6,
+      "waitBetweenTries": 15000
     },
     {
       "id": "output",
       "name": "Output Summary",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1900, 300]
+      "position": [
+        2100,
+        300
+      ]
+    },
+    {
+      "id": "aggregate-report",
+      "name": "Aggregate For Report",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1700,
+        300
+      ],
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "data",
+        "options": {}
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Report only jobs the sheet had never seen AND that clear the skill bar.\n// sheet_action comes from the scraper's /sheets/upsert response, so 'appended'\n// means brand new to us; the skill bar is what stops Score -1 / Skills 0% rows\n// (Regional Sales Manager, Designer...) from reaching Telegram.\n// Returning zero items makes n8n skip the Telegram node entirely.\n//\n// min_skill_match comes from the Get Settings branch (dashboard Settings page,\n// stored in /opt/jbfind/data/settings.json). Any failure - node missing,\n// scraper down, junk value - degrades to the default instead of killing the run.\nlet MIN_SKILL_MATCH = 60;\ntry {\n  const v = Number($('Get Settings').first().json.min_skill_match);\n  if (Number.isFinite(v)) MIN_SKILL_MATCH = v;\n} catch (e) { /* keep the default */ }\n\nconst out = [];\nfor (const item of items) {\n  const data = item.json.data || [];\n  const fresh = data\n    .filter((j) => j.sheet_action === \"appended\"\n      && Number(j.skill_match || 0) >= MIN_SKILL_MATCH)\n    .sort((a, b) => Number(b.overall_score || 0) - Number(a.overall_score || 0));\n  if (fresh.length) out.push({ json: { ...item.json, data: fresh } });\n}\nreturn out;"
+      },
+      "id": "b1f0a2c4-7d3e-4a55-9c18-2f6b0d9e4a71",
+      "name": "Only New Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1810,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "err-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "8511150256",
+        "text": "={{ \"\u26a0\ufe0f JBFind pipeline FAILED\\n\\nWorkflow: \" + $json.workflow.name + \"\\nNode: \" + $json.execution.lastNodeExecuted + \"\\nMode: \" + $json.execution.mode + \"\\n\\n\" + $json.execution.error.message }}",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "kpmwTSxcMxjbUNok",
+          "name": "JBFind Reporter Bot"
+        }
+      },
+      "id": "send-error-alert",
+      "name": "Send Error Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        500,
+        700
+      ],
+      "webhookId": "c2d25492-c6f1-429f-b30e-09c7d04c17cf"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://scraper:8001/settings",
+        "sendHeaders": false,
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "get-settings-node",
+      "name": "Get Settings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        640,
+        620
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "split-jobs",
+      "name": "Split Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1855,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// One Telegram card per job: explode the report array into items.\nconst out = [];\nfor (const item of $input.all()) {\n  for (const j of (item.json.data || []).slice(0, 10)) out.push({ json: j });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "send-job-card",
+      "name": "Send Job Card",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        1970,
+        300
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "kpmwTSxcMxjbUNok",
+          "name": "JBFind Reporter Bot"
+        }
+      },
+      "parameters": {
+        "chatId": "8511150256",
+        "text": "={{ \"JBFind \\u00b7 \" + new Date().toLocaleString(\"en-IN\", {timeZone: \"Asia/Kolkata\", dateStyle: \"medium\", timeStyle: \"short\", hour12: false}) + \" IST\" + \"\\n\" + $json.company + \" \\u2014 \" + $json.title + \"\\nScore \" + $json.overall_score + \" | Skills \" + $json.skill_match + \"% | \" + $json.location + \" \\u00b7 Posted \" + ($json.posted_date || \"unknown\") + \"\\n\" + (($json.why_this_job || \"\").slice(0, 600)) + \"\\n\" + $json.job_url }}",
+        "additionalFields": {},
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "\u2705 Apply",
+                    "additionalFields": {
+                      "callback_data": "={{ \"d:APPLY:\" + $json.job_id }}"
+                    }
+                  },
+                  {
+                    "text": "\u274c Reject",
+                    "additionalFields": {
+                      "callback_data": "={{ \"d:REJECT:\" + $json.job_id }}"
+                    }
+                  },
+                  {
+                    "text": "\ud83d\udeab Not suitable",
+                    "additionalFields": {
+                      "callback_data": "={{ \"d:NOT_SUITABLE:\" + $json.job_id }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "\ud83d\udcca Score Details",
+                    "additionalFields": {
+                      "callback_data": "={{ \"s:\" + $json.job_id }}"
+                    }
+                  },
+                  {
+                    "text": "\ud83d\udcc4 Resume",
+                    "additionalFields": {
+                      "callback_data": "={{ \"r:\" + $json.job_id }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "webhookId": "241a3769-6246-477c-80e3-013225f41e73"
+    },
+    {
+      "name": "Dedupe Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const prev = $getWorkflowStaticData('global');\nconst key = String($json.execution.error.message || 'err').slice(0,120);\nconst now = Date.now();\nconst last = prev.lastAlert || {};\nif (last.key === key && now - last.at < 30*60*1000) {\n  return [];\n}\nprev.lastAlert = { key, at: now };\nreturn items;"
+      },
+      "id": "dedupe-alert-1"
     }
   ],
   "connections": {
-    "Daily 6am Trigger": {"main": [[{"node": "JobSpy Scrape", "type": "main", "index": 0}, {"node": "RemoteOK API", "type": "main", "index": 0}, {"node": "Remotive API", "type": "main", "index": 0}]]},
-    "JobSpy Scrape": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]},
-    "RemoteOK API": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 1}]]},
-    "Remotive API": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 2}]]},
-    "Merge All Sources": {"main": [[{"node": "Normalize + Dedupe", "type": "main", "index": 0}]]},
-    "Normalize + Dedupe": {"main": [[{"node": "LLM Analyze Batch", "type": "main", "index": 0}]]},
-    "LLM Analyze Batch": {"main": [[{"node": "Parse Scores + Rank", "type": "main", "index": 0}]]},
-    "Parse Scores + Rank": {"main": [[{"node": "Sheets Write Jobs", "type": "main", "index": 0}]]},
-    "Sheets Write Jobs": {"main": [[{"node": "Send Telegram Report", "type": "main", "index": 0}]]},
-    "Send Telegram Report": {"main": [[{"node": "Output Summary", "type": "main", "index": 0}]]}
+    "JobSpy Scrape": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remotive API": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge All Sources": {
+      "main": [
+        [
+          {
+            "node": "Normalize + Dedupe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize + Dedupe": {
+      "main": [
+        [
+          {
+            "node": "LLM Analyze Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Analyze Batch": {
+      "main": [
+        [
+          {
+            "node": "Parse Scores + Rank",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Scores + Rank": {
+      "main": [
+        [
+          {
+            "node": "Sheets Write Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheets Write Jobs": {
+      "main": [
+        [
+          {
+            "node": "Aggregate For Report",
+            "type": "n8n-nodes-base.main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate For Report": {
+      "main": [
+        [
+          {
+            "node": "Only New Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "30-Min Trigger": {
+      "main": [
+        [
+          {
+            "node": "JobSpy Scrape",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Remotive API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only New Jobs": {
+      "main": [
+        [
+          {
+            "node": "Split Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Dedupe Alert",
+            "type": "n8n-nodes-base.main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Settings": {},
+    "Split Jobs": {
+      "main": [
+        [
+          {
+            "node": "Send Job Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Job Card": {
+      "main": [
+        [
+          {
+            "node": "Output Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedupe Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Error Alert",
+            "type": "n8n-nodes-base.main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "pinData": {},
-  "versionId": "1",
-  "triggerCount": 0,
-  "tags": ["jbfind", "daily"],
-  "active": false
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "active": true
 }

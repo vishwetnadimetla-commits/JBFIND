@@ -1,9 +1,11 @@
 FROM python:3.12-slim
 
-RUN pip install --no-cache-dir fastapi uvicorn python-jobspy
+RUN pip install --no-cache-dir fastapi uvicorn python-jobspy google-auth playwright
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
-RUN python3 -m playwright install chromium --with-deps 2>/dev/null || true
+# Full Chromium, headless shell skipped: naukri's Akamai wall returns 403 for
+# the headless-shell fingerprint and 200 for this one (checked 2026-09-26).
+RUN python3 -m playwright install --with-deps --no-shell chromium
 
 COPY deploy/scraper_service.py /app/scraper_service.py
 WORKDIR /app

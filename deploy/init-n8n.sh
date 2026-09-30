@@ -31,7 +31,7 @@ curl -sS -X POST "$N8N_URL/rest/workflows" \
 
 echo "[init] Done. Open $N8N_URL to configure credentials."
 echo "[init] You need to create these credential types:"
-echo "  - Header Auth: EXPlabs API key"
-echo "  - OAuth2: Google Sheets/Drive"
 echo "  - Telegram Bot: both bot tokens"
-echo "  - HTTP Request: Apify token"
+echo "  - OAuth2: Google Sheets/Drive"
+echo "  - None — job scraping uses OSS JobSpy + free APIs (no paid token)"
+echo "  - LLM: local Ollama (default) — run: docker exec jbfind-ollama ollama pull qwen2.5:7b"

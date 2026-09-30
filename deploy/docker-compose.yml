@@ -4,7 +4,9 @@ services:
     container_name: n8n
     restart: always
     ports:
-      - "5678:5678"
+      # loopback-only: the outside world enters via Caddy (DuckDNS + TLS).
+      # Direct http://IP:5678 dies here on purpose (it was internet-open).
+      - "127.0.0.1:5678:5678"
     environment:
       - N8N_DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
@@ -13,7 +15,12 @@ services:
       - DB_POSTGRESDB_USER=n8n
       - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASSWORD:-changeme}
       - N8N_METRICS=false
+      - N8N_SECURE_COOKIE=${N8N_SECURE_COOKIE:-false}
+      - N8N_EDITOR_BASE_URL=${N8N_EDITOR_BASE_URL:-https://n8n.jbfind.duckdns.org/}
+      - WEBHOOK_URL=${WEBHOOK_URL:-https://n8n.jbfind.duckdns.org/}
       - N8N_SKIP_WEBHOOK_DEREGISTRATION_SHUTDOWN=true
+      - JBFIND_LLM_URL=${JBFIND_LLM_URL:-ollama:11434}
+      - JBFIND_LLM_MODEL=${JBFIND_LLM_MODEL:-qwen2.5:7b}
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
@@ -47,7 +54,27 @@ services:
     container_name: jbfind-scraper
     restart: unless-stopped
     ports:
-      - "8001:8001"
+      # internal only (n8n + dashboard reach it over the docker network)
+      - "127.0.0.1:8001:8001"
+    environment:
+      - JBFIND_SHEET_ID=${JBFIND_SHEET_ID:-1voOTzO8auKbgrP4J4dPACnwf9Tg2MsgUSCU9w2-mPFY}
+      - JBFIND_SHEET_TAB=${JBFIND_SHEET_TAB:-JOBS}
+    volumes:
+      - /home/ubuntu/.jbfind/secrets:/secrets:ro
+      # settings.json (min_skill_match) lives here so dashboard edits survive
+      # container recreation; the file is created on first PUT.
+      - /opt/jbfind/data:/data
+      # bot token for the getUpdates poller behind the Telegram report buttons
+      - /home/ubuntu/.jbfind/secrets/telegram.env:/run/secrets/telegram.env:ro
+    networks:
+      - jbfind
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: jbfind-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
     networks:
       - jbfind
 
@@ -58,10 +85,14 @@ services:
     container_name: jbfind-dashboard
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      # loopback-only: served publicly as https://jbfind.duckdns.org via Caddy
+      - "127.0.0.1:8080:8080"
+    environment:
+      - JBFINDS_GOOGLE_CLIENT_ID=${JBFINDS_GOOGLE_CLIENT_ID:-}
+      - JBFINDS_ALLOWED_EMAILS=${JBFINDS_ALLOWED_EMAILS:-vishwet.nadimetla@gmail.com,mr.vishwet2705@gmail.com}
     volumes:
-      - ~/.jbfind/secrets:/secrets:ro
-      - ./dashboard.html:/dash/dashboard.html:ro
+      - /home/ubuntu/.jbfind/secrets:/secrets:ro
+      - /home/ubuntu/.jbfind/secrets/telegram.env:/run/secrets/telegram.env:ro
     networks:
       - jbfind
 
@@ -82,6 +113,7 @@ services:
 volumes:
   n8n_data:
   postgres_data:
+  ollama_data:
 
 networks:
   jbfind:
